@@ -2850,8 +2850,8 @@ export default function ProviderDetailPage() {
           <h2 className="text-lg font-semibold mb-4">{t("availableModels")}</h2>
           {renderModelsSection()}
 
-          {/* Custom Models — available for providers without managed available-model metadata */}
-          {!isManagedAvailableModelsProvider && providerId !== "gemini" && (
+          {/* Custom Models — available for all providers */}
+          {!isManagedAvailableModelsProvider && (
             <CustomModelsSection
               providerId={providerId}
               providerAlias={providerDisplayAlias}
