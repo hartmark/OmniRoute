@@ -32,10 +32,13 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-  ok: true,
-  json: async () => ({ connections: [], keys: [], data: [], cloudEnabled: false }),
-}));
+vi.stubGlobal(
+  "fetch",
+  vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ connections: [], keys: [], data: [], cloudEnabled: false }),
+  })
+);
 
 vi.mock("@/shared/constants/models", () => ({
   PROVIDER_ID_TO_ALIAS: {},
@@ -51,9 +54,8 @@ vi.mock("@/app/(dashboard)/dashboard/cli-code/components/ToolDetailClient", () =
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { default: CliCodeDetailPage } = await import(
-  "@/app/(dashboard)/dashboard/cli-code/[id]/page"
-);
+const { default: CliCodeDetailPage } =
+  await import("@/app/(dashboard)/dashboard/cli-code/[id]/page");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

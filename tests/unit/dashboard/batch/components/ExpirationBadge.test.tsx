@@ -11,9 +11,8 @@ vi.mock("next-intl", () => ({
 
 // ── Import component after mocks ─────────────────────────────────────────────
 
-const { default: ExpirationBadge } = await import(
-  "../../../../../src/app/(dashboard)/dashboard/batch/components/ExpirationBadge"
-);
+const { default: ExpirationBadge } =
+  await import("../../../../../src/app/(dashboard)/dashboard/batch/components/ExpirationBadge");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

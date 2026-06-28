@@ -5,9 +5,7 @@
 import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  useImprovePrompt,
-} from "../../../src/app/(dashboard)/dashboard/playground/hooks/useImprovePrompt";
+import { useImprovePrompt } from "../../../src/app/(dashboard)/dashboard/playground/hooks/useImprovePrompt";
 import type { ImprovePromptResult } from "../../../src/lib/playground/promptImprover";
 
 // ─── Minimal hook test harness ────────────────────────────────────────────────
@@ -78,7 +76,7 @@ describe("useImprovePrompt", () => {
         ok: true,
         status: 200,
         json: async () => MOCK_RESULT,
-      }),
+      })
     );
 
     const { hookRef: result, unmount } = mountHook(() => useImprovePrompt());
@@ -124,7 +122,7 @@ describe("useImprovePrompt", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req),
-      }),
+      })
     );
     unmount();
   });
@@ -136,7 +134,7 @@ describe("useImprovePrompt", () => {
         ok: false,
         status: 400,
         json: async () => ({ error: { message: "At least one field required" } }),
-      }),
+      })
     );
 
     const { hookRef: result, unmount } = mountHook(() => useImprovePrompt());
@@ -153,10 +151,7 @@ describe("useImprovePrompt", () => {
   });
 
   it("sets error state when fetch throws (network error)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockRejectedValue(new Error("Network failure")),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network failure")));
 
     const { hookRef: result, unmount } = mountHook(() => useImprovePrompt());
 
@@ -212,7 +207,7 @@ describe("useImprovePrompt", () => {
         ok: false,
         status: 503,
         json: async () => ({}),
-      }),
+      })
     );
 
     const { hookRef: result, unmount } = mountHook(() => useImprovePrompt());

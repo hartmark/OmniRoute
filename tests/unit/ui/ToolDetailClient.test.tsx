@@ -127,9 +127,8 @@ vi.mock("../../../src/app/(dashboard)/dashboard/cli-code/components/CliproxyapiT
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { default: ToolDetailClient } = await import(
-  "@/app/(dashboard)/dashboard/cli-code/components/ToolDetailClient"
-);
+const { default: ToolDetailClient } =
+  await import("@/app/(dashboard)/dashboard/cli-code/components/ToolDetailClient");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

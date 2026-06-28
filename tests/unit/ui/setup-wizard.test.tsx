@@ -52,9 +52,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   });
 
   it("renders step 1 (verify) on open", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const container = makeContainer();
     await act(async () => {
@@ -76,9 +75,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   }, 30000);
 
   it("navigates to step 2 when Next clicked", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const container = makeContainer();
     await act(async () => {
@@ -107,9 +105,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   }, 30000);
 
   it("calls onDnsToggle when enabling DNS in step 2", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const onDnsToggle = vi.fn().mockResolvedValue(undefined);
     const container = makeContainer();
@@ -155,9 +152,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   }, 30000);
 
   it("calls onClose when Cancel clicked on step 1", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const onClose = vi.fn();
     const container = makeContainer();

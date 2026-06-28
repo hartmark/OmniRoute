@@ -12,9 +12,8 @@ vi.mock("next-intl", () => ({
 
 // ── Import component at module level (after mocks) ────────────────────────────
 
-const { default: MarkdownMessage } = await import(
-  "../../../src/app/(dashboard)/dashboard/playground/components/MarkdownMessage"
-);
+const { default: MarkdownMessage } =
+  await import("../../../src/app/(dashboard)/dashboard/playground/components/MarkdownMessage");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,8 +42,9 @@ async function waitForCondition(fn: () => boolean, timeoutMs = 3000): Promise<vo
 
 describe("MarkdownMessage", () => {
   beforeEach(() => {
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
   afterEach(() => {
@@ -142,7 +142,7 @@ describe("MarkdownMessage", () => {
   it("renders strong and emphasis formatting", async () => {
     const el = renderMarkdown("**bold text** and _italic text_");
     await waitForCondition(
-      () => el.querySelector("strong") !== null || el.querySelector("em") !== null,
+      () => el.querySelector("strong") !== null || el.querySelector("em") !== null
     );
 
     const strong = el.querySelector("strong");

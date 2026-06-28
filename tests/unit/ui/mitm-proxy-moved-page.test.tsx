@@ -47,9 +47,8 @@ describe("MitmProxyMovedPage — page-moved banner (C4)", { timeout: 30000 }, ()
   });
 
   it("renders with pageMoved.title text", async () => {
-    const { default: MitmProxyMovedPage } = await import(
-      "../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page"
-    );
+    const { default: MitmProxyMovedPage } =
+      await import("../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page");
 
     const container = makeContainer();
     await act(async () => {
@@ -61,9 +60,8 @@ describe("MitmProxyMovedPage — page-moved banner (C4)", { timeout: 30000 }, ()
   });
 
   it("renders pageMoved.message text", async () => {
-    const { default: MitmProxyMovedPage } = await import(
-      "../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page"
-    );
+    const { default: MitmProxyMovedPage } =
+      await import("../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page");
 
     const container = makeContainer();
     await act(async () => {
@@ -75,9 +73,8 @@ describe("MitmProxyMovedPage — page-moved banner (C4)", { timeout: 30000 }, ()
   });
 
   it("clicking goNow button calls router.replace with agent-bridge path", async () => {
-    const { default: MitmProxyMovedPage } = await import(
-      "../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page"
-    );
+    const { default: MitmProxyMovedPage } =
+      await import("../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page");
 
     const container = makeContainer();
     await act(async () => {
@@ -98,9 +95,8 @@ describe("MitmProxyMovedPage — page-moved banner (C4)", { timeout: 30000 }, ()
   });
 
   it("auto-redirect fires after 2500ms via setTimeout", async () => {
-    const { default: MitmProxyMovedPage } = await import(
-      "../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page"
-    );
+    const { default: MitmProxyMovedPage } =
+      await import("../../../src/app/(dashboard)/dashboard/system/mitm-proxy/page");
 
     const container = makeContainer();
     await act(async () => {

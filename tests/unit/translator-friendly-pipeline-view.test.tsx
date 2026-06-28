@@ -32,13 +32,7 @@ vi.mock("@/shared/components/Collapsible", () => ({
 
 // Shared component stubs
 vi.mock("@/shared/components", () => ({
-  Card: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode;
-    className?: string;
-  }) => (
+  Card: ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <div data-testid="card" className={className}>
       {children}
     </div>
@@ -58,21 +52,18 @@ vi.mock("@/shared/components", () => ({
 }));
 
 // exampleTemplates stub
-vi.mock(
-  "@/app/(dashboard)/dashboard/translator/exampleTemplates",
-  () => ({
-    FORMAT_META: {
-      openai: { label: "OpenAI", color: "blue", icon: "psychology" },
-      claude: { label: "Claude", color: "amber", icon: "auto_awesome" },
-      gemini: { label: "Gemini", color: "green", icon: "smart_toy" },
-    },
-    FORMAT_OPTIONS: [
-      { value: "openai", label: "OpenAI" },
-      { value: "claude", label: "Claude" },
-    ],
-    getExampleTemplates: () => [],
-  }),
-);
+vi.mock("@/app/(dashboard)/dashboard/translator/exampleTemplates", () => ({
+  FORMAT_META: {
+    openai: { label: "OpenAI", color: "blue", icon: "psychology" },
+    claude: { label: "Claude", color: "amber", icon: "auto_awesome" },
+    gemini: { label: "Gemini", color: "green", icon: "smart_toy" },
+  },
+  FORMAT_OPTIONS: [
+    { value: "openai", label: "OpenAI" },
+    { value: "claude", label: "Claude" },
+  ],
+  getExampleTemplates: () => [],
+}));
 
 const cleanupCallbacks: Array<() => void> = [];
 
@@ -139,16 +130,14 @@ describe("PipelineView", () => {
   });
 
   it("exports a default function component", async () => {
-    const mod = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const mod =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     expect(typeof mod.default).toBe("function");
   });
 
   it("renders Collapsible wrapper with route icon", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -160,9 +149,8 @@ describe("PipelineView", () => {
   });
 
   it("renders demo steps when pipelineSteps is not provided (defaultOpen=true)", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -179,9 +167,8 @@ describe("PipelineView", () => {
   });
 
   it("renders provided pipelineSteps instead of demo", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -198,9 +185,8 @@ describe("PipelineView", () => {
   });
 
   it("shows all 4 status values: done, active, pending, error", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -219,9 +205,8 @@ describe("PipelineView", () => {
   });
 
   it("clicking a step expands its details and shows content", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -252,9 +237,8 @@ describe("PipelineView", () => {
   });
 
   it("clicking an expanded step collapses it", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -283,15 +267,16 @@ describe("PipelineView", () => {
     // only mounts children when open). In this stub environment the ref callback fires
     // immediately on mount, setting hasOpened=true. This test verifies the more important
     // half: that forceOpen=true results in a mounted container with step list items.
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
 
     // Render with forceOpen=true — ensures open + hasOpened are set on mount.
     await act(async () => {
-      root.render(<PipelineView defaultOpen={false} forceOpen={true} pipelineSteps={SAMPLE_STEPS} />);
+      root.render(
+        <PipelineView defaultOpen={false} forceOpen={true} pipelineSteps={SAMPLE_STEPS} />
+      );
     });
 
     const pipelineContainer = container.querySelector("[data-pipeline-container='true']");
@@ -302,23 +287,21 @@ describe("PipelineView", () => {
 
   it("onOpenChange fires when mounted with forceOpen=true", async () => {
     const onOpenChange = vi.fn();
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
       root.render(
-        <PipelineView forceOpen={true} onOpenChange={onOpenChange} pipelineSteps={SAMPLE_STEPS} />,
+        <PipelineView forceOpen={true} onOpenChange={onOpenChange} pipelineSteps={SAMPLE_STEPS} />
       );
     });
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
 
   it("renders connector lines between steps", async () => {
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -337,9 +320,8 @@ describe("PipelineView", () => {
     // The Collapsible stub always renders children directly, so this simulates the
     // case where the accordion content div is mounted (as happens after a real click
     // that opens the Collapsible). The ref callback must detect the mount and set hasOpened.
-    const { default: PipelineView } = await import(
-      "@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView"
-    );
+    const { default: PipelineView } =
+      await import("@/app/(dashboard)/dashboard/translator/components/advanced/PipelineView");
     const container = makeContainer();
     const root = createRoot(container);
     // forceOpen=true triggers the useEffect that sets open+hasOpened AND the Collapsible

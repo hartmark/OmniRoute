@@ -106,9 +106,7 @@ const mockFetch = vi.fn().mockResolvedValue({
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { default: AcpAgentsPage } = await import(
-  "@/app/(dashboard)/dashboard/acp-agents/page"
-);
+const { default: AcpAgentsPage } = await import("@/app/(dashboard)/dashboard/acp-agents/page");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

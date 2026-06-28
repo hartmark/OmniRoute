@@ -10,9 +10,7 @@ import { createRoot } from "react-dom/client";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useCompressionReplay } from "@/app/(dashboard)/dashboard/compression/studio/useCompressionReplay";
 import { compressionEventToModel } from "@/app/(dashboard)/dashboard/compression/studio/compressionFlowModel";
-import type {
-  CompressionCompletedPayload,
-} from "@/lib/events/types";
+import type { CompressionCompletedPayload } from "@/lib/events/types";
 
 // 3 engine steps → buildReplayFrames yields 3 frames (indices 0,1,2).
 const PAYLOAD: CompressionCompletedPayload = {
@@ -23,9 +21,30 @@ const PAYLOAD: CompressionCompletedPayload = {
   compressedTokens: 700,
   savingsPercent: 30,
   engineBreakdown: [
-    { engine: "a", originalTokens: 1000, compressedTokens: 900, savingsPercent: 10, techniquesUsed: [], durationMs: 1 },
-    { engine: "b", originalTokens: 900, compressedTokens: 800, savingsPercent: 11, techniquesUsed: [], durationMs: 1 },
-    { engine: "c", originalTokens: 800, compressedTokens: 700, savingsPercent: 12, techniquesUsed: [], durationMs: 1 },
+    {
+      engine: "a",
+      originalTokens: 1000,
+      compressedTokens: 900,
+      savingsPercent: 10,
+      techniquesUsed: [],
+      durationMs: 1,
+    },
+    {
+      engine: "b",
+      originalTokens: 900,
+      compressedTokens: 800,
+      savingsPercent: 11,
+      techniquesUsed: [],
+      durationMs: 1,
+    },
+    {
+      engine: "c",
+      originalTokens: 800,
+      compressedTokens: 700,
+      savingsPercent: 12,
+      techniquesUsed: [],
+      durationMs: 1,
+    },
   ],
   timestamp: 1718000000000,
 };

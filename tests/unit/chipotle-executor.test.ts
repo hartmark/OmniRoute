@@ -40,7 +40,7 @@ describe("ChipotleExecutor", () => {
     const result = (executor as any).transformRequest(
       "pepper-1",
       { model: "pepper-1", messages: [{ role: "user", content: "hi" }] },
-      false,
+      false
     );
     assert.strictEqual(result.model, "pepper-1");
   });
@@ -63,14 +63,14 @@ describe("ChipotleExecutor", () => {
 
   it("is registered in executor index", async () => {
     const { getExecutor } = await import("../../open-sse/executors/index.ts");
-    const exec = getExecutor("chipotle");
+    const exec = await getExecutor("chipotle");
     assert.ok(exec, "chipotle executor should be registered");
     assert.ok(exec instanceof ChipotleExecutor);
   });
 
   it("pepper alias works", async () => {
     const { getExecutor } = await import("../../open-sse/executors/index.ts");
-    const exec = getExecutor("pepper");
+    const exec = await getExecutor("pepper");
     assert.ok(exec, "pepper alias should be registered");
     assert.ok(exec instanceof ChipotleExecutor);
   });

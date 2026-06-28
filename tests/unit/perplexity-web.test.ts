@@ -75,16 +75,16 @@ function mockFetchError(error) {
 
 // ─── Test: Executor registration ────────────────────────────────────────────
 
-test("PerplexityWebExecutor is registered in executor index", () => {
+test("PerplexityWebExecutor is registered in executor index", async () => {
   assert.ok(hasSpecializedExecutor("perplexity-web"));
   assert.ok(hasSpecializedExecutor("pplx-web"));
-  const executor = getExecutor("perplexity-web");
+  const executor = await getExecutor("perplexity-web");
   assert.ok(executor instanceof PerplexityWebExecutor);
 });
 
-test("PerplexityWebExecutor alias resolves to same type", () => {
-  const a = getExecutor("perplexity-web");
-  const b = getExecutor("pplx-web");
+test("PerplexityWebExecutor alias resolves to same type", async () => {
+  const a = await getExecutor("perplexity-web");
+  const b = await getExecutor("pplx-web");
   assert.ok(a instanceof PerplexityWebExecutor);
   assert.ok(b instanceof PerplexityWebExecutor);
 });
@@ -271,7 +271,10 @@ test("Schematized API: diff_block chunks reconstruct answer (non-streaming)", as
       blocks: [
         {
           intended_usage: "ask_text_0_markdown",
-          diff_block: { field: "markdown_block", patches: [{ op: "add", path: "/chunks/1", value: "answer " }] },
+          diff_block: {
+            field: "markdown_block",
+            patches: [{ op: "add", path: "/chunks/1", value: "answer " }],
+          },
         },
       ],
     },
@@ -281,7 +284,10 @@ test("Schematized API: diff_block chunks reconstruct answer (non-streaming)", as
       blocks: [
         {
           intended_usage: "ask_text_0_markdown",
-          diff_block: { field: "markdown_block", patches: [{ op: "add", path: "/chunks/2", value: "is 42." }] },
+          diff_block: {
+            field: "markdown_block",
+            patches: [{ op: "add", path: "/chunks/2", value: "is 42." }],
+          },
         },
       ],
     },
@@ -291,7 +297,11 @@ test("Schematized API: diff_block chunks reconstruct answer (non-streaming)", as
       blocks: [
         {
           intended_usage: "ask_text_0_markdown",
-          markdown_block: { progress: "DONE", chunks: ["The answer is 42."], answer: "The answer is 42." },
+          markdown_block: {
+            progress: "DONE",
+            chunks: ["The answer is 42."],
+            answer: "The answer is 42.",
+          },
         },
       ],
     },
@@ -325,7 +335,12 @@ test("Schematized API: diff_block streams incremental deltas", async () => {
       blocks: [
         {
           intended_usage: "ask_text_0_markdown",
-          diff_block: { field: "markdown_block", patches: [{ op: "replace", path: "", value: { progress: "IN_PROGRESS", chunks: ["one, "] } }] },
+          diff_block: {
+            field: "markdown_block",
+            patches: [
+              { op: "replace", path: "", value: { progress: "IN_PROGRESS", chunks: ["one, "] } },
+            ],
+          },
         },
       ],
     },
@@ -334,7 +349,10 @@ test("Schematized API: diff_block streams incremental deltas", async () => {
       blocks: [
         {
           intended_usage: "ask_text_0_markdown",
-          diff_block: { field: "markdown_block", patches: [{ op: "add", path: "/chunks/1", value: "two, " }] },
+          diff_block: {
+            field: "markdown_block",
+            patches: [{ op: "add", path: "/chunks/1", value: "two, " }],
+          },
         },
       ],
     },
@@ -344,7 +362,11 @@ test("Schematized API: diff_block streams incremental deltas", async () => {
       blocks: [
         {
           intended_usage: "ask_text_0_markdown",
-          markdown_block: { progress: "DONE", chunks: ["one, two, three"], answer: "one, two, three" },
+          markdown_block: {
+            progress: "DONE",
+            chunks: ["one, two, three"],
+            answer: "one, two, three",
+          },
         },
       ],
     },
@@ -903,7 +925,10 @@ test("Request: posts to correct Perplexity SSE endpoint", async () => {
 
     assert.equal(capturedUrl, "https://www.perplexity.ai/rest/sse/perplexity_ask");
     assert.equal(capturedHeaders["Origin"], "https://www.perplexity.ai");
-    assert.equal(capturedHeaders["x-perplexity-request-endpoint"], "https://www.perplexity.ai/rest/sse/perplexity_ask");
+    assert.equal(
+      capturedHeaders["x-perplexity-request-endpoint"],
+      "https://www.perplexity.ai/rest/sse/perplexity_ask"
+    );
     assert.equal(capturedHeaders["x-perplexity-request-reason"], "ask-query-state-provider");
     assert.ok(capturedHeaders["x-request-id"], "x-request-id header should be set");
     assert.equal(capturedHeaders["Accept"], "text/event-stream");

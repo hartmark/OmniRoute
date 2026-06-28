@@ -53,9 +53,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("renders agent variant with correct i18n keys", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -69,9 +67,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("renders omni variant with correct i18n keys", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -84,9 +80,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("agent variant renders 5 comparison rows (whatIs, direction, executor, storage, tagline)", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -105,9 +99,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("omni variant renders 5 comparison rows", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -119,9 +111,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("renders data-testid for variant", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -133,9 +123,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("agent variant cross-link points to /dashboard/omni-skills", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -148,9 +136,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("omni variant cross-link points to /dashboard/agent-skills", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -163,9 +149,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("accepts optional className prop", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
@@ -177,9 +161,7 @@ describe("SkillsConceptCard", () => {
   });
 
   it("renders without crashing when className is omitted", async () => {
-    const { SkillsConceptCard } = await import(
-      "../../src/shared/components/SkillsConceptCard.tsx"
-    );
+    const { SkillsConceptCard } = await import("../../src/shared/components/SkillsConceptCard.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {

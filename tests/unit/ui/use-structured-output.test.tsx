@@ -5,9 +5,7 @@
 import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect } from "vitest";
-import {
-  useStructuredOutput,
-} from "../../../src/app/(dashboard)/dashboard/playground/hooks/useStructuredOutput";
+import { useStructuredOutput } from "../../../src/app/(dashboard)/dashboard/playground/hooks/useStructuredOutput";
 
 // ─── Minimal hook test harness ────────────────────────────────────────────────
 

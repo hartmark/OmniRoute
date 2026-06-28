@@ -5,9 +5,8 @@ import { describe, it, expect, afterEach } from "vitest";
 
 // ── Import component ──────────────────────────────────────────────────────────
 
-const { default: ProgressBarBicolor } = await import(
-  "../../../../../src/app/(dashboard)/dashboard/batch/components/ProgressBarBicolor"
-);
+const { default: ProgressBarBicolor } =
+  await import("../../../../../src/app/(dashboard)/dashboard/batch/components/ProgressBarBicolor");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

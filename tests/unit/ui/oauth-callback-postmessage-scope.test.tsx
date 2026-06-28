@@ -81,7 +81,11 @@ describe("OAuth callback page — postMessage target origin scope (#998)", () =>
       await Promise.resolve();
     });
 
-    const trusted = new Set([window.location.origin, "http://localhost:1455", "http://127.0.0.1:1455"]);
+    const trusted = new Set([
+      window.location.origin,
+      "http://localhost:1455",
+      "http://127.0.0.1:1455",
+    ]);
     const targetOrigins = postMessageSpy.mock.calls.map((call) => call[1]);
     expect(targetOrigins.length).toBeGreaterThan(0);
     for (const origin of targetOrigins) {

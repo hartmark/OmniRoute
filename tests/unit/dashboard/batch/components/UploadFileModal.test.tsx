@@ -11,9 +11,8 @@ vi.mock("next-intl", () => ({
 
 // ── Import component after mocks ─────────────────────────────────────────────
 
-const { default: UploadFileModal } = await import(
-  "../../../../../src/app/(dashboard)/dashboard/batch/components/UploadFileModal"
-);
+const { default: UploadFileModal } =
+  await import("../../../../../src/app/(dashboard)/dashboard/batch/components/UploadFileModal");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

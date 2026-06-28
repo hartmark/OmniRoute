@@ -11,9 +11,8 @@ vi.mock("next-intl", () => ({
   },
 }));
 
-const { default: StackedAllocationBar } = await import(
-  "../../../src/app/(dashboard)/dashboard/costs/quota-share/components/StackedAllocationBar"
-);
+const { default: StackedAllocationBar } =
+  await import("../../../src/app/(dashboard)/dashboard/costs/quota-share/components/StackedAllocationBar");
 
 const ALLOCATIONS_3 = [
   { apiKeyId: "key_1", weight: 50, policy: "hard" as const },
@@ -33,8 +32,9 @@ let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
 
 async function render(props: Parameters<typeof StackedAllocationBar>[0]) {
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {

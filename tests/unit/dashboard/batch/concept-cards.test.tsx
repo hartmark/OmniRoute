@@ -22,12 +22,10 @@ vi.mock("next-intl", () => ({
 
 // ── Import components after mocks ─────────────────────────────────────────────
 
-const { default: BatchConceptCard } = await import(
-  "../../../../src/app/(dashboard)/dashboard/batch/components/BatchConceptCard"
-);
-const { default: FilesConceptCard } = await import(
-  "../../../../src/app/(dashboard)/dashboard/batch/components/FilesConceptCard"
-);
+const { default: BatchConceptCard } =
+  await import("../../../../src/app/(dashboard)/dashboard/batch/components/BatchConceptCard");
+const { default: FilesConceptCard } =
+  await import("../../../../src/app/(dashboard)/dashboard/batch/components/FilesConceptCard");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

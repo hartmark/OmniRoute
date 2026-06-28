@@ -93,7 +93,7 @@ test("connection-level 5xx with a connectionId poisons exhaustedConnections (#17
   assert.equal(s.exhaustedProviders.size, 0);
 });
 
-test("connection-level 5xx without a connectionId poisons exhaustedProviders (#1731)", () => {
+test("connection-level 5xx without a connectionId does NOT poison exhaustedProviders (different models may succeed)", () => {
   const s = sets();
   applyComboTargetExhaustion(target({ connectionId: null }), {
     ...baseOpts,
@@ -101,7 +101,11 @@ test("connection-level 5xx without a connectionId poisons exhaustedProviders (#1
     fallbackResult: {},
     sets: s,
   });
-  assert.ok(s.exhaustedProviders.has("test-dedup-provider"));
+  // Without a connectionId, we no longer mark the entire provider as exhausted.
+  // A 503 from one model (e.g. gemma-4-31b-it) does not mean another model on the
+  // same provider (e.g. gemma-4-26b-a4b-it) is also down. The provider circuit
+  // breaker handles provider-wide outages separately.
+  assert.equal(s.exhaustedProviders.size, 0);
   assert.equal(s.exhaustedConnections.size, 0);
 });
 

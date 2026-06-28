@@ -28,9 +28,8 @@ const mockFetch = vi.fn((url: string) => {
 vi.stubGlobal("fetch", mockFetch);
 
 // Import component after mocks.
-const { default: ComplianceTab } = await import(
-  "../../../src/app/(dashboard)/dashboard/audit/ComplianceTab"
-);
+const { default: ComplianceTab } =
+  await import("../../../src/app/(dashboard)/dashboard/audit/ComplianceTab");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,8 +45,9 @@ const containers: Array<{ root: ReturnType<typeof createRoot>; el: HTMLDivElemen
 
 function renderTab() {
   // Must set IS_REACT_ACT_ENVIRONMENT before each render.
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
   const el = document.createElement("div");
   document.body.appendChild(el);
   const root = createRoot(el);

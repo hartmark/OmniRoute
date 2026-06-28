@@ -3,9 +3,8 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-const { ModelVisibilityToolbar } = await import(
-  "../../../src/app/(dashboard)/dashboard/providers/[id]/components/ModelRow"
-);
+const { ModelVisibilityToolbar } =
+  await import("../../../src/app/(dashboard)/dashboard/providers/[id]/components/ModelRow");
 
 // providerText() falls back to the English string when t.has(key) is false.
 const t: any = Object.assign((k: string) => k, { has: () => false });

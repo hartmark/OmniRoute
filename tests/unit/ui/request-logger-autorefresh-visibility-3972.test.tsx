@@ -36,10 +36,10 @@ vi.mock("@/store/emailPrivacyStore", () => ({
   default: () => ({ emailsVisible: true }),
 }));
 
-const RequestLoggerV2 = (await import("../../../src/shared/components/RequestLoggerV2.tsx")).default;
-const { DEFAULT_REFRESH_INTERVAL_SEC } = await import(
-  "../../../src/shared/components/requestLoggerPreferences.ts"
-);
+const RequestLoggerV2 = (await import("../../../src/shared/components/RequestLoggerV2.tsx"))
+  .default;
+const { DEFAULT_REFRESH_INTERVAL_SEC } =
+  await import("../../../src/shared/components/requestLoggerPreferences.ts");
 
 function setVisibility(state: "visible" | "hidden") {
   Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });

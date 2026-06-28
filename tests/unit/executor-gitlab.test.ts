@@ -11,11 +11,11 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-test("GitlabExecutor is registered in the executor index", () => {
+test("GitlabExecutor is registered in the executor index", async () => {
   assert.equal(hasSpecializedExecutor("gitlab"), true);
-  assert.ok(getExecutor("gitlab") instanceof GitlabExecutor);
+  assert.ok((await getExecutor("gitlab")) instanceof GitlabExecutor);
   assert.equal(hasSpecializedExecutor("gitlab-duo"), true);
-  assert.ok(getExecutor("gitlab-duo") instanceof GitlabExecutor);
+  assert.ok((await getExecutor("gitlab-duo")) instanceof GitlabExecutor);
 });
 
 test("GitlabExecutor posts PAT-backed code suggestion requests to the configured instance", async () => {
@@ -139,7 +139,7 @@ test("GitlabExecutor maps upstream auth failures to OpenAI-style errors", async 
 });
 
 test("GitlabExecutor uses GitLab direct_access for gitlab-duo and persists the cache", async () => {
-  const executor = getExecutor("gitlab-duo") as GitlabExecutor;
+  const executor = (await getExecutor("gitlab-duo")) as GitlabExecutor;
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; headers: Record<string, string> }> = [];
   const refreshedPatches: Array<Record<string, unknown>> = [];
@@ -215,7 +215,7 @@ test("GitlabExecutor uses GitLab direct_access for gitlab-duo and persists the c
 });
 
 test("GitlabExecutor falls back to the public Code Suggestions endpoint when direct_access is disabled", async () => {
-  const executor = getExecutor("gitlab-duo") as GitlabExecutor;
+  const executor = (await getExecutor("gitlab-duo")) as GitlabExecutor;
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];
 

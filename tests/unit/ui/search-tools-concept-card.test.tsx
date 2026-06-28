@@ -12,9 +12,8 @@ vi.mock("next-intl", () => ({
 
 // ── Import component after mocks ──────────────────────────────────────────────
 
-const { default: SearchConceptCard } = await import(
-  "../../../src/app/(dashboard)/dashboard/search-tools/components/SearchConceptCard"
-);
+const { default: SearchConceptCard } =
+  await import("../../../src/app/(dashboard)/dashboard/search-tools/components/SearchConceptCard");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +34,9 @@ function renderCard(props?: { defaultCollapsed?: boolean }): HTMLDivElement {
 
 describe("SearchConceptCard", () => {
   beforeEach(() => {
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
   afterEach(() => {

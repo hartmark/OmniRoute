@@ -4,9 +4,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const { default: TokenCostCounter } = await import(
-  "../../../src/app/(dashboard)/dashboard/playground/components/TokenCostCounter"
-);
+const { default: TokenCostCounter } =
+  await import("../../../src/app/(dashboard)/dashboard/playground/components/TokenCostCounter");
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -31,8 +30,9 @@ function renderCounter(
 
 describe("TokenCostCounter", () => {
   beforeEach(() => {
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
   afterEach(() => {

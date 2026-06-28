@@ -8,9 +8,8 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-const { default: AllocationTable } = await import(
-  "../../../src/app/(dashboard)/dashboard/costs/quota-share/components/AllocationTable"
-);
+const { default: AllocationTable } =
+  await import("../../../src/app/(dashboard)/dashboard/costs/quota-share/components/AllocationTable");
 
 const ALLOCATIONS = [
   { apiKeyId: "key_1", weight: 60, policy: "hard" as const },
@@ -23,8 +22,9 @@ let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
 
 async function render(props: Parameters<typeof AllocationTable>[0]) {
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {

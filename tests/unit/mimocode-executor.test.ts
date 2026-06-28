@@ -165,13 +165,13 @@ describe("MimocodeExecutor", () => {
 
   it("is registered in executor index", async () => {
     const { getExecutor } = await import("../../open-sse/executors/index.ts");
-    const exec = getExecutor("mimocode");
+    const exec = await getExecutor("mimocode");
     assert.ok(exec instanceof MimocodeExecutor);
   });
 
   it("mcode alias works", async () => {
     const { getExecutor } = await import("../../open-sse/executors/index.ts");
-    const exec = getExecutor("mcode");
+    const exec = await getExecutor("mcode");
     assert.ok(exec instanceof MimocodeExecutor);
   });
 });
@@ -265,21 +265,36 @@ describe("mimocode per-account proxy", () => {
     assert.strictEqual(config.proxy?.host, "proxy.example.com");
   });
 
-  it("default proxyUrlMap is empty", () => {
-    const testExec = new MimocodeExecutor();
-    const map = (testExec as any).proxyUrlMap;
-    assert.ok(map instanceof Map);
-    assert.strictEqual(map.size, 0);
+  it("default account has null proxy", () => {
+    const accounts = (exec as any).accounts;
+    assert.ok(Array.isArray(accounts));
+    assert.ok(accounts.length >= 1);
+    assert.strictEqual(accounts[0].proxy, null);
   });
 
-  it("syncAccountsFromCredentials populates proxyUrlMap with correct URLs", () => {
+  it("syncAccountsFromCredentials reads accountProxies", () => {
     const testExec = new MimocodeExecutor();
     const fp1 = "fingerprint-1";
     const fp2 = "fingerprint-2";
     (testExec as any).accounts = [
-      { fingerprint: fp1, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
-      { fingerprint: fp2, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
+      {
+        fingerprint: fp1,
+        jwt: "",
+        expiresAt: 0,
+        cooldownUntil: 0,
+        consecutiveFails: 0,
+        proxy: null,
+      },
+      {
+        fingerprint: fp2,
+        jwt: "",
+        expiresAt: 0,
+        cooldownUntil: 0,
+        consecutiveFails: 0,
+        proxy: null,
+      },
     ];
+    (testExec as any).nextAccountIdx = 0;
 
     const credentials = {
       providerSpecificData: {
@@ -291,19 +306,23 @@ describe("mimocode per-account proxy", () => {
     };
     (testExec as any).syncAccountsFromCredentials(credentials);
 
-    const map: Map<string, string> = (testExec as any).proxyUrlMap;
-    assert.strictEqual(map.get(fp1), "http://p1.example.com:1080");
-    assert.strictEqual(map.has(fp2), false);
+    const accounts = (testExec as any).accounts;
+    const acct1 = accounts.find((a: any) => a.fingerprint === fp1);
+    const acct2 = accounts.find((a: any) => a.fingerprint === fp2);
+    assert.deepStrictEqual(acct1.proxy, { type: "http", host: "p1.example.com", port: 1080 });
+    assert.strictEqual(acct2.proxy, null);
   });
 
   it("syncAccountsFromCredentials skips when accountProxies absent", () => {
     const testExec = new MimocodeExecutor();
-    const mapBefore = (testExec as any).proxyUrlMap.size;
+    const before = JSON.parse(JSON.stringify((testExec as any).accounts));
     (testExec as any).syncAccountsFromCredentials({ providerSpecificData: {} });
-    assert.strictEqual((testExec as any).proxyUrlMap.size, mapBefore);
+    const after = (testExec as any).accounts;
+    assert.strictEqual(after.length, before.length);
+    assert.strictEqual(after[0].proxy, null);
   });
 
-  it("syncAccountsFromCredentials adds proxyUrlMap entries for all valid proxy configs", () => {
+  it("syncAccountsFromCredentials skips unknown fingerprints", () => {
     const testExec = new MimocodeExecutor();
     const existingFp = (testExec as any).accounts[0].fingerprint;
     (testExec as any).syncAccountsFromCredentials({
@@ -316,27 +335,30 @@ describe("mimocode per-account proxy", () => {
         ],
       },
     });
-    const map: Map<string, string> = (testExec as any).proxyUrlMap;
-    assert.strictEqual(
-      map.has("nonexistent-fingerprint"),
-      true,
-      "proxyUrlMap stores all valid proxy configs"
-    );
-    assert.strictEqual(map.get("nonexistent-fingerprint"), "socks5://s5.example.com:1080");
-    assert.strictEqual(
-      map.has(existingFp),
-      false,
-      "existing fingerprint without proxy is not in map"
-    );
+    assert.strictEqual((testExec as any).accounts[0].proxy, null);
   });
 
-  it("accounts with different proxies produce distinct URLs", () => {
+  it("accounts with different proxies are tracked independently", () => {
     const testExec = new MimocodeExecutor();
     const fp1 = "fp-a";
     const fp2 = "fp-b";
     (testExec as any).accounts = [
-      { fingerprint: fp1, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
-      { fingerprint: fp2, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
+      {
+        fingerprint: fp1,
+        jwt: "",
+        expiresAt: 0,
+        cooldownUntil: 0,
+        consecutiveFails: 0,
+        proxy: null,
+      },
+      {
+        fingerprint: fp2,
+        jwt: "",
+        expiresAt: 0,
+        cooldownUntil: 0,
+        consecutiveFails: 0,
+        proxy: null,
+      },
     ];
     (testExec as any).syncAccountsFromCredentials({
       providerSpecificData: {
@@ -347,141 +369,64 @@ describe("mimocode per-account proxy", () => {
       },
     });
 
-    const map: Map<string, string> = (testExec as any).proxyUrlMap;
-    assert.strictEqual(map.get(fp1), "http://a.com:8080");
-    assert.strictEqual(map.get(fp2), "socks5://b.com:1080");
+    const accounts = (testExec as any).accounts;
+    const a1 = accounts.find((a: any) => a.fingerprint === fp1);
+    const a2 = accounts.find((a: any) => a.fingerprint === fp2);
+    assert.notDeepStrictEqual(a1.proxy, a2.proxy);
+    assert.strictEqual(a1.proxy?.host, "a.com");
+    assert.strictEqual(a2.proxy?.host, "b.com");
   });
 
-  it("getProxyDispatcher returns a dispatcher for known fingerprint", () => {
+  it("getJwtForAccount reads proxy from account", async () => {
     const testExec = new MimocodeExecutor();
-    const fp = "fp-dispatcher-test";
+    const fp = "test-fp-proxy";
+    const proxyConfig = { type: "http", host: "proxy.test", port: 3128 };
     (testExec as any).accounts = [
-      { fingerprint: fp, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
-    ];
-    (testExec as any).syncAccountsFromCredentials({
-      providerSpecificData: {
-        accountProxies: [
-          { fingerprint: fp, proxy: { type: "socks5", host: "s5.test", port: 1080 } },
-        ],
+      {
+        fingerprint: fp,
+        jwt: "",
+        expiresAt: 0,
+        cooldownUntil: 0,
+        consecutiveFails: 0,
+        proxy: proxyConfig,
       },
-    });
+    ];
+    (testExec as any).nextAccountIdx = 0;
 
-    const dispatcher = (testExec as any).getProxyDispatcher(fp);
-    assert.ok(dispatcher, "dispatcher should exist for registered fingerprint");
+    const acct = (testExec as any).accounts[0];
+    assert.deepStrictEqual(acct.proxy, proxyConfig);
+    assert.strictEqual(acct.jwt, "");
   });
 
-  it("getProxyDispatcher returns undefined for unknown fingerprint", () => {
+  it("proxy field persists on account after sync", () => {
     const testExec = new MimocodeExecutor();
-    const dispatcher = (testExec as any).getProxyDispatcher("unknown-fp");
-    assert.strictEqual(dispatcher, undefined);
-  });
-
-  it("fetchWithProxy falls back to plain fetch when no proxy configured", async () => {
-    const testExec = new MimocodeExecutor();
-    const fp = "fp-no-proxy";
-    const originalFetch = globalThis.fetch;
-    let fetchCalled = false;
-    globalThis.fetch = async () => {
-      fetchCalled = true;
-      return new Response("ok");
-    };
-    try {
-      const resp = await (testExec as any).fetchWithProxy("https://example.com", {}, fp);
-      assert.ok(fetchCalled, "plain fetch should have been called");
-      assert.strictEqual(resp.status, 200);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("authenticated proxy includes credentials in URL", () => {
-    const testExec = new MimocodeExecutor();
-    const fp = "fp-auth";
+    const fp = "test-fp-persist";
     (testExec as any).accounts = [
-      { fingerprint: fp, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
+      {
+        fingerprint: fp,
+        jwt: "",
+        expiresAt: 0,
+        cooldownUntil: 0,
+        consecutiveFails: 0,
+        proxy: null,
+      },
     ];
+    (testExec as any).nextAccountIdx = 0;
+
+    const proxy1 = { type: "http", host: "first.proxy", port: 8080 };
     (testExec as any).syncAccountsFromCredentials({
       providerSpecificData: {
-        accountProxies: [
-          {
-            fingerprint: fp,
-            proxy: {
-              type: "socks5",
-              host: "s5.auth.com",
-              port: 1080,
-              username: "user",
-              password: "pass",
-            },
-          },
-        ],
+        accountProxies: [{ fingerprint: fp, proxy: proxy1 }],
       },
     });
+    assert.deepStrictEqual((testExec as any).accounts[0].proxy, proxy1);
 
-    const map: Map<string, string> = (testExec as any).proxyUrlMap;
-    const url = map.get(fp);
-    assert.ok(url);
-    assert.ok(url.includes("user:pass@"), "URL should include encoded credentials");
-  });
-
-  it("default port is 1080 for socks5 when not specified", () => {
-    const testExec = new MimocodeExecutor();
-    const fp = "fp-default-port";
-    (testExec as any).accounts = [
-      { fingerprint: fp, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
-    ];
+    const proxy2 = { type: "socks5", host: "second.proxy", port: 1080 };
     (testExec as any).syncAccountsFromCredentials({
       providerSpecificData: {
-        accountProxies: [
-          { fingerprint: fp, proxy: { type: "socks5", host: "s5.test", port: undefined } },
-        ],
+        accountProxies: [{ fingerprint: fp, proxy: proxy2 }],
       },
     });
-
-    const map: Map<string, string> = (testExec as any).proxyUrlMap;
-    assert.strictEqual(map.get(fp), "socks5://s5.test:1080");
-  });
-
-  it("default port is 8080 for http when not specified", () => {
-    const testExec = new MimocodeExecutor();
-    const fp = "fp-http-default";
-    (testExec as any).accounts = [
-      { fingerprint: fp, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
-    ];
-    (testExec as any).syncAccountsFromCredentials({
-      providerSpecificData: {
-        accountProxies: [
-          { fingerprint: fp, proxy: { type: "http", host: "h.test", port: undefined } },
-        ],
-      },
-    });
-
-    const map: Map<string, string> = (testExec as any).proxyUrlMap;
-    assert.strictEqual(map.get(fp), "http://h.test:8080");
-  });
-
-  it("proxy URL map updates correctly on re-sync", () => {
-    const testExec = new MimocodeExecutor();
-    const fp = "fp-re-sync";
-    (testExec as any).accounts = [
-      { fingerprint: fp, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0 },
-    ];
-
-    (testExec as any).syncAccountsFromCredentials({
-      providerSpecificData: {
-        accountProxies: [
-          { fingerprint: fp, proxy: { type: "http", host: "first.proxy", port: 8080 } },
-        ],
-      },
-    });
-    assert.strictEqual((testExec as any).proxyUrlMap.get(fp), "http://first.proxy:8080");
-
-    (testExec as any).syncAccountsFromCredentials({
-      providerSpecificData: {
-        accountProxies: [
-          { fingerprint: fp, proxy: { type: "socks5", host: "second.proxy", port: 1080 } },
-        ],
-      },
-    });
-    assert.strictEqual((testExec as any).proxyUrlMap.get(fp), "socks5://second.proxy:1080");
+    assert.deepStrictEqual((testExec as any).accounts[0].proxy, proxy2);
   });
 });

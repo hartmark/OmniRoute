@@ -27,9 +27,8 @@ vi.mock("@/shared/components", () => ({
   ModelSelectModal: () => <div data-testid="ModelSelectModal" />,
 }));
 
-const { default: HermesAgentToolCard } = await import(
-  "@/app/(dashboard)/dashboard/cli-code/components/HermesAgentToolCard"
-);
+const { default: HermesAgentToolCard } =
+  await import("@/app/(dashboard)/dashboard/cli-code/components/HermesAgentToolCard");
 
 const SETTINGS_ENDPOINT = "/api/cli-tools/hermes-agent-settings";
 const containers: HTMLElement[] = [];
