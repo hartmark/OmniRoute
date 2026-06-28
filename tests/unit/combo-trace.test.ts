@@ -38,6 +38,7 @@ await createCombo({
 });
 
 const callLogs = await import("../../src/lib/usage/callLogs.ts");
+const { handleChat } = await import("../../src/sse/handlers/chat.ts");
 
 test.after(() => {
   db.close();
@@ -79,7 +80,6 @@ test("trace combo target resolution for model 'default'", async (t) => {
       headers: { "Content-Type": "application/json" },
     });
 
-    const { handleChat } = await import("../../src/sse/handlers/chat.ts");
     const res = await handleChat(req, null, JSON.parse(body));
     const text = await res.text();
 
@@ -141,7 +141,6 @@ test("trace combo with failing gemini - should return error, not fall through", 
       headers: { "Content-Type": "application/json" },
     });
 
-    const { handleChat } = await import("../../src/sse/handlers/chat.ts");
     const res = await handleChat(req, null, JSON.parse(body));
 
     console.log("\nFailing gemini test:");

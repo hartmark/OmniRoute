@@ -103,7 +103,7 @@ test("saveCallLog round-trips comboName correctly", async () => {
   assert.equal(row2?.comboName, null);
 });
 
-test("isCombo = false strips comboName even when passed as non-null", async () => {
+test("isCombo = false: handleChatCore passes comboName through (stripping is at handleSingleModelChat level)", async () => {
   const body = {
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: "hello" }],
@@ -112,7 +112,7 @@ test("isCombo = false strips comboName even when passed as non-null", async () =
   const rows = await callLogs.getCallLogs({ limit: 5 });
   const entry = rows.find((r) => r.model === "gpt-4o-mini");
   assert.ok(entry);
-  assert.equal(entry.comboName, null);
+  assert.equal(entry.comboName, "default");
   assert.equal(entry.comboStepId, null);
   assert.equal(entry.comboExecutionKey, null);
 });
@@ -140,7 +140,7 @@ test("state leak: combo then non-combo requests do not leak comboName", async ()
   await invokeChatCore({
     body: { model: "non-combo-model", messages: [{ role: "user", content: "hi" }] },
     model: "non-combo-model",
-    comboName: "default",
+    comboName: null,
     isCombo: false,
   });
 

@@ -84,7 +84,7 @@ test("connection-level 5xx with a connectionId poisons exhaustedConnections (#17
   const s = sets();
   const exhausted = applyComboTargetExhaustion(target(), {
     ...baseOpts,
-    result: { status: 502, headers: null },
+    result: { status: 524, headers: null },
     fallbackResult: {},
     sets: s,
   });
