@@ -201,10 +201,11 @@ test("RESPONSES_STARTUP_THINKING_FRAME is a self-closed synthetic reasoning item
       "response.reasoning_summary_part.added",
       "response.reasoning_summary_text.delta",
       "response.reasoning_summary_part.done",
+      "response.output_item.done",
     ]
   );
 
-  const [added, partAdded, delta, partDone] = events;
+  const [added, partAdded, delta, partDone, itemDone] = events;
   assert.equal(added.data.item.type, "reasoning");
   const itemId = added.data.item.id;
   assert.ok(itemId, "reasoning item must have an id");
@@ -214,6 +215,17 @@ test("RESPONSES_STARTUP_THINKING_FRAME is a self-closed synthetic reasoning item
   assert.equal(delta.data.delta, "✨");
   assert.equal(partDone.data.item_id, itemId);
   assert.equal(partDone.data.part.text, "✨");
+
+  // Regression for the live 2026-08-13 incident (OpenClaw issue #123342):
+  // reasoning_summary_part.done only closes the nested summary part, not the
+  // output item itself. Without a matching response.output_item.done here,
+  // a client tracking open items by output_index still sees this synthetic
+  // item open at index 0 when the real upstream response later reuses that
+  // same index for its own response.output_item.added, and throws a
+  // collision ("Responses stream reused active output index 0").
+  assert.equal(itemDone.data.output_index, added.data.output_index);
+  assert.equal(itemDone.data.item.id, itemId);
+  assert.equal(itemDone.data.item.type, "reasoning");
 });
 
 test("slow handler emits the Responses API startup frame before the real body", async () => {
