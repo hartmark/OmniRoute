@@ -13243,16 +13243,20 @@
     "pollErrorStopped": "Sondagem interrompida: o servidor rejeitou o pedido (404/403).",
     "pollErrorTransient": "Erro ao obter dados: a repetir automaticamente.",
     "degraded": "Dados parciais: fontes indisponíveis: {sources}",
-    "degraded.source.database": "Base de Dados",
-    "degraded.source.circuitBreaker": "Disjuntor",
-    "degraded.source.modelLockouts": "Bloqueios de Modelo",
-    "degraded.source.count": "Contagem de Ligações"
+    "degradedSource": {
+      "database": "Base de Dados",
+      "circuitBreaker": "Disjuntor",
+      "modelLockouts": "Bloqueios de Modelo",
+      "count": "Contagem de Ligações"
+    }
   },
   "featureFlagCapabilityFilterEnabledDescription": "Rejeitar pedidos antes do envio quando o modelo de destino não tiver as capacidades necessárias (visão, ferramentas, saída estruturada, janela de contexto). Protege pedidos diretos de um único fornecedor que contornam o filtro de compatibilidade da camada combinada.",
-  "capabilityFilter.visionMismatch": "O fornecedor não suporta visão para este pedido de imagem",
-  "capabilityFilter.toolsMismatch": "O fornecedor não suporta a chamada de ferramentas",
-  "capabilityFilter.structuredOutputMismatch": "O fornecedor não suporta saída estruturada",
-  "capabilityFilter.contextWindowMismatch": "A solicitação excede a janela de contexto do fornecedor",
+  "capabilityFilter": {
+    "visionMismatch": "O fornecedor não suporta visão para este pedido de imagem",
+    "toolsMismatch": "O fornecedor não suporta a chamada de ferramentas",
+    "structuredOutputMismatch": "O fornecedor não suporta saída estruturada",
+    "contextWindowMismatch": "A solicitação excede a janela de contexto do fornecedor"
+  },
   "publicSystem": {
     "notFound": {
       "title": "Página não encontrada",
