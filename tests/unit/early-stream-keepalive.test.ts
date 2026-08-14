@@ -17,6 +17,7 @@ import {
   OPENAI_CHAT_ERROR_FRAME,
   OPENAI_RESPONSES_ERROR_FRAME,
 } from "../../open-sse/utils/earlyStreamKeepalive.ts";
+import { assertResponsesOutputIndexLifecycle } from "../helpers/assertResponsesOutputIndexLifecycle.ts";
 
 async function readAll(response: Response): Promise<string> {
   const reader = response.body!.getReader();
@@ -226,6 +227,56 @@ test("RESPONSES_STARTUP_THINKING_FRAME is a self-closed synthetic reasoning item
   assert.equal(itemDone.data.output_index, added.data.output_index);
   assert.equal(itemDone.data.item.id, itemId);
   assert.equal(itemDone.data.item.type, "reasoning");
+
+  // General-purpose form of the same check: this frame alone must be a fully
+  // self-closed lifecycle (no output_item left open at the end).
+  assertResponsesOutputIndexLifecycle(events);
+});
+
+test("RESPONSES_STARTUP_THINKING_FRAME does not collide when the real upstream response reuses output_index 0", () => {
+  // Reproduces the actual live failure shape (OpenClaw issue #123342): the
+  // keepalive placeholder fires, then the real upstream response starts its
+  // own independent response.created lifecycle and reuses output_index 0 for
+  // its own real reasoning item. Concatenating the two and replaying them
+  // through the same output_index-lifecycle contract a real client enforces
+  // is what actually would have caught the missing output_item.done — the
+  // frame-shape-only test above could pass while this still failed.
+  const decoded = new TextDecoder().decode(RESPONSES_STARTUP_THINKING_FRAME);
+  const keepaliveEvents = decoded
+    .split("\n\n")
+    .filter(Boolean)
+    .map((frame) => {
+      const [eventLine, dataLine] = frame.split("\n");
+      return {
+        event: eventLine.replace(/^event: /, ""),
+        data: JSON.parse(dataLine.replace(/^data: /, "")),
+      };
+    });
+
+  const realResponseEvents = [
+    { event: "response.created", data: { type: "response.created" } },
+    { event: "response.in_progress", data: { type: "response.in_progress" } },
+    {
+      event: "response.output_item.added",
+      data: {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { id: "rs_real", type: "reasoning", summary: [] },
+      },
+    },
+    {
+      event: "response.output_item.done",
+      data: {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { id: "rs_real", type: "reasoning", summary: [] },
+      },
+    },
+  ];
+
+  assert.doesNotThrow(() =>
+    assertResponsesOutputIndexLifecycle([...keepaliveEvents, ...realResponseEvents])
+  );
 });
 
 test("slow handler emits the Responses API startup frame before the real body", async () => {
