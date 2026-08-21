@@ -92,6 +92,43 @@ test("resolvePreviousResponseState reconstructs input/output from the call-log a
   });
 });
 
+test("resolvePreviousResponseState reads output from a wrapped (streaming) clientResponse shape", () => {
+  // A streaming reply's clientResponse is clientPayloadCollector.build()'s output,
+  // which always nests the caller-supplied summary under `.summary` (see
+  // createStructuredSSECollector in streamPayloadCollector.ts) rather than
+  // carrying `output` at the top level like a non-streaming reply does. This
+  // must resolve exactly like the unwrapped shape above -- it was the actual
+  // cause of previous_response_id continuation always failing for a streaming
+  // Responses-API passthrough connection (fixed alongside the clientPayload
+  // builder gap in open-sse/utils/stream.ts).
+  insertCallLog({
+    id: "log-1-streamed",
+    responseId: "resp_streamed",
+    apiKeyId: "key-1",
+    detailState: "ready",
+    artifactRelPath: "2026-01-01/log-1-streamed.json",
+  });
+  writeArtifact("2026-01-01/log-1-streamed.json", {
+    providerRequest: { body: { input: [{ type: "message", role: "user", content: "hi" }] } },
+    clientResponse: {
+      _streamed: true,
+      _format: "sse-json",
+      _eventCount: 1,
+      summary: {
+        id: "resp_streamed",
+        object: "response",
+        output: [{ type: "message", role: "assistant", content: "hello" }],
+      },
+    },
+  });
+
+  const result = store.resolvePreviousResponseState("resp_streamed", "key-1");
+  assert.deepEqual(result, {
+    input: [{ type: "message", role: "user", content: "hi" }],
+    output: [{ type: "message", role: "assistant", content: "hello" }],
+  });
+});
+
 test("resolvePreviousResponseState returns null for an unknown response id", () => {
   const result = store.resolvePreviousResponseState("resp_does_not_exist", "key-1");
   assert.equal(result, null);
