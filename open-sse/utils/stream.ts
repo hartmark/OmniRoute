@@ -2894,9 +2894,24 @@ export function createSSEStream(options: StreamOptions = {}) {
                     : { object: "chat.completion", ...responseBody },
                   { includeEvents: false }
                 ),
-                clientPayload: clientPayloadCollector.build(responseBody, {
-                  includeEvents: false,
-                }),
+                // Same OPENAI_RESPONSES carve-out as providerPayload above and the
+                // passthrough branch's onComplete, but keyed on sourceFormat (what the
+                // client requested/receives in translate mode) rather than targetFormat
+                // (what the upstream provider speaks) -- translateResponse(targetFormat,
+                // sourceFormat, ...) above confirms that direction. emitTranslatedClientItem
+                // already pushes every client-visible translated item into
+                // clientPayloadCollector unconditionally, so the events are already there;
+                // this only fixes what gets built from them.
+                clientPayload: clientPayloadCollector.build(
+                  sourceFormat === FORMATS.OPENAI_RESPONSES
+                    ? buildStreamSummaryFromEvents(
+                        clientPayloadCollector.getEvents(),
+                        sourceFormat,
+                        model
+                      )
+                    : responseBody,
+                  { includeEvents: false }
+                ),
               });
             } catch (e) {
               console.debug(
