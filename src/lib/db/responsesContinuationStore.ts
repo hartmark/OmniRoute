@@ -65,10 +65,19 @@ export function resolvePreviousResponseState(
   if (state !== "ready" || !artifact?.pipeline) return null;
 
   const providerRequest = artifact.pipeline.providerRequest as { body?: unknown } | undefined;
-  const clientResponse = artifact.pipeline.clientResponse as { output?: unknown } | undefined;
+  const clientResponse = artifact.pipeline.clientResponse as
+    { output?: unknown; summary?: { output?: unknown } } | undefined;
 
   const input = isPlainRecord(providerRequest?.body) ? providerRequest.body.input : undefined;
-  const output = clientResponse?.output;
+  // A streaming clientResponse is clientPayloadCollector.build()'s output, which
+  // always nests the caller's summary under `.summary` (see
+  // createStructuredSSECollector in streamPayloadCollector.ts) -- a non-streaming
+  // one carries `output` directly. Same dual-shape concern as extractResponsesId
+  // in open-sse/handlers/chatCore/attemptLogging.ts, checked here independently
+  // since this reads back a stored artifact rather than the live object.
+  const output = Array.isArray(clientResponse?.output)
+    ? clientResponse.output
+    : clientResponse?.summary?.output;
   if (!Array.isArray(input) || !Array.isArray(output)) return null;
 
   return { input, output };
