@@ -78,6 +78,7 @@ test("resolvePreviousResponseState reconstructs input/output from the call-log a
     artifactRelPath: "2026-01-01/log-1.json",
   });
   writeArtifact("2026-01-01/log-1.json", {
+    clientRawRequest: { body: { input: [{ type: "message", role: "user", content: "hi" }] } },
     providerRequest: { body: { input: [{ type: "message", role: "user", content: "hi" }] } },
     clientResponse: {
       id: "resp_abc",
@@ -109,6 +110,7 @@ test("resolvePreviousResponseState reads output from a wrapped (streaming) clien
     artifactRelPath: "2026-01-01/log-1-streamed.json",
   });
   writeArtifact("2026-01-01/log-1-streamed.json", {
+    clientRawRequest: { body: { input: [{ type: "message", role: "user", content: "hi" }] } },
     providerRequest: { body: { input: [{ type: "message", role: "user", content: "hi" }] } },
     clientResponse: {
       _streamed: true,
@@ -143,6 +145,7 @@ test("resolvePreviousResponseState never crosses tenants (scoped by api_key_id)"
     artifactRelPath: "2026-01-01/log-2.json",
   });
   writeArtifact("2026-01-01/log-2.json", {
+    clientRawRequest: { body: { input: [{ role: "user", content: "secret" }] } },
     providerRequest: { body: { input: [{ role: "user", content: "secret" }] } },
     clientResponse: { id: "resp_tenant_a", output: [{ role: "assistant", content: "reply" }] },
   });
@@ -176,11 +179,48 @@ test("resolvePreviousResponseState fails closed when the pipeline payload was si
   // an object -- resolvePreviousResponseState must never try to reconstruct
   // from it and silently drop history.
   writeArtifact("2026-01-01/log-4.json", {
-    providerRequest: { body: "[omitted: call log artifact size limit exceeded]" },
+    clientRawRequest: { body: "[omitted: call log artifact size limit exceeded]" },
     clientResponse: { id: "resp_omitted", output: [] },
   });
 
   assert.equal(store.resolvePreviousResponseState("resp_omitted", "key-1"), null);
+});
+
+test("resolvePreviousResponseState resolves input from clientRawRequest when providerRequest was translated to a different upstream wire shape", () => {
+  // Real shape from a live auto-routed free-tier connection: OmniRoute
+  // translates the client's Responses-API request into Chat Completions
+  // (`messages`, no `input` at all) before forwarding upstream. Reading
+  // `input` from providerRequest.body made this permanently unresolvable --
+  // previous_response_not_found on every attempt -- for any connection where
+  // the selected upstream isn't itself a native Responses-API passthrough.
+  // The client's own request is always Responses-API shaped (this store only
+  // fires for sourceFormat === OPENAI_RESPONSES, see chat.ts), so
+  // clientRawRequest is the correct source regardless of upstream shape.
+  insertCallLog({
+    id: "log-6",
+    responseId: "resp_gen-translate-mode",
+    apiKeyId: "key-1",
+    detailState: "ready",
+    artifactRelPath: "2026-01-01/log-6.json",
+  });
+  writeArtifact("2026-01-01/log-6.json", {
+    clientRawRequest: { body: { input: [{ type: "message", role: "user", content: "hi" }] } },
+    providerRequest: {
+      body: { model: "laguna-s-2.1-free", messages: [{ role: "user", content: "hi" }] },
+    },
+    clientResponse: {
+      summary: {
+        id: "resp_gen-translate-mode",
+        output: [{ type: "message", role: "assistant", content: "hello" }],
+      },
+    },
+  });
+
+  const result = store.resolvePreviousResponseState("resp_gen-translate-mode", "key-1");
+  assert.deepEqual(result, {
+    input: [{ type: "message", role: "user", content: "hi" }],
+    output: [{ type: "message", role: "assistant", content: "hello" }],
+  });
 });
 
 test("resolvePreviousResponseState returns null when detail logging was never captured for this row", () => {

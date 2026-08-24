@@ -64,11 +64,20 @@ export function resolvePreviousResponseState(
   const { artifact, state } = readCallArtifact(row.artifact_relpath);
   if (state !== "ready" || !artifact?.pipeline) return null;
 
-  const providerRequest = artifact.pipeline.providerRequest as { body?: unknown } | undefined;
+  const clientRawRequest = artifact.pipeline.clientRawRequest as { body?: unknown } | undefined;
   const clientResponse = artifact.pipeline.clientResponse as
     { output?: unknown; summary?: { output?: unknown } } | undefined;
 
-  const input = isPlainRecord(providerRequest?.body) ? providerRequest.body.input : undefined;
+  // clientRawRequest, not providerRequest: this store only ever fires for
+  // sourceFormat === OPENAI_RESPONSES (see chat.ts), so the client's own
+  // request is always Responses-API shaped and always carries `input`.
+  // providerRequest is upstream-shaped and only has `input` for a native
+  // passthrough Responses API upstream -- any translated upstream (e.g. Chat
+  // Completions `messages`) rewrites the wire body entirely, which made this
+  // unconditionally unresolvable for every translate-mode/auto-routed
+  // connection (previous_response_not_found on every attempt, regardless of
+  // whether the id was real and the artifact was otherwise 'ready').
+  const input = isPlainRecord(clientRawRequest?.body) ? clientRawRequest.body.input : undefined;
   // A streaming clientResponse is clientPayloadCollector.build()'s output, which
   // always nests the caller's summary under `.summary` (see
   // createStructuredSSECollector in streamPayloadCollector.ts) -- a non-streaming
