@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { JsonView, defaultStyles, darkStyles } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
@@ -32,6 +32,15 @@ export function PayloadSection({
   const { isDark } = useTheme();
   const resolvedSectionId = sectionId || title;
   const expandLevel = useJsonTreeExpandLevel(resolvedSectionId);
+  // react-json-view-lite re-seeds every node's expand state whenever this
+  // function's reference changes (it's a real effect dependency, not just an
+  // initial-mount seed -- see its ExpandableObject/ExpandableArray
+  // useEffect(..., [shouldExpandNode])). Memoized so an unrelated re-render
+  // (copy-button state, autoscroll toggle, etc.) doesn't recreate it and wipe
+  // out individually expanded/collapsed nodes; it only changes -- and
+  // legitimately resets every node -- when expandLevel itself changes, i.e.
+  // when the user actually clicks a level control.
+  const shouldExpandNode = useCallback((level) => level < expandLevel, [expandLevel]);
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
   const treeContainerRef = useRef(null);
@@ -97,7 +106,7 @@ export function PayloadSection({
           <JsonView
             data={parsedJson}
             style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
-            shouldExpandNode={(level) => level < expandLevel}
+            shouldExpandNode={shouldExpandNode}
           />
         </div>
       )}

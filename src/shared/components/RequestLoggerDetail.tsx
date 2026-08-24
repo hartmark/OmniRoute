@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { JsonView, defaultStyles, darkStyles } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
@@ -75,6 +75,11 @@ function StreamSection({ title, sectionId, json, onCopy }) {
   const { isDark } = useTheme();
   const resolvedSectionId = sectionId || title;
   const expandLevel = useJsonTreeExpandLevel(resolvedSectionId);
+  // See the matching comment in RequestLoggerDetail.sections.tsx's
+  // PayloadSection: react-json-view-lite re-seeds every node's expand state
+  // whenever this reference changes, so it must only change when expandLevel
+  // itself changes, not on every unrelated re-render.
+  const shouldExpandNode = useCallback((level) => level < expandLevel, [expandLevel]);
   const segments = useMemo(() => parseStreamIntoSegments(json), [json]);
 
   const handleCopy = async () => {
@@ -159,7 +164,7 @@ function StreamSection({ title, sectionId, json, onCopy }) {
                 <JsonView
                   data={segment.value}
                   style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
-                  shouldExpandNode={(level) => level < expandLevel}
+                  shouldExpandNode={shouldExpandNode}
                 />
               </div>
             ) : (
@@ -217,6 +222,7 @@ export default function RequestLoggerDetail({
 }) {
   const t = useTranslations("requestLogger.detail");
   const locale = useLocale();
+  const modalScrollRef = useRef(null);
   // Close on Escape key
   useEffect(() => {
     const handler = (e) => {
@@ -225,6 +231,21 @@ export default function RequestLoggerDetail({
     globalThis.addEventListener("keydown", handler);
     return () => globalThis.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  // The overlay is full-viewport, but the modal panel itself is centered and
+  // narrower than the viewport (max-w-225), leaving backdrop margin on every
+  // side. A wheel event there has no scrollable target under the cursor, so
+  // scrolling only worked once the pointer happened to be over the panel's
+  // own content. Forward wheel scrolling from anywhere in the overlay to the
+  // panel instead, so the backdrop margin scrolls it too.
+  const handleOverlayWheel = (e) => {
+    const panel = modalScrollRef.current;
+    // Let native scrolling handle wheel events that already land inside the
+    // panel -- only forward the ones from the backdrop margin around it.
+    if (!panel || panel.contains(e.target)) return;
+    panel.scrollTop += e.deltaY;
+    e.preventDefault();
+  };
 
   const statusStyle = getStatusStyle(log.status);
   const protocolKey = log.sourceFormat || log.provider;
@@ -372,12 +393,14 @@ export default function RequestLoggerDetail({
     <div
       className="fixed inset-0 z-50 flex items-start justify-center px-2 pt-[5vh] sm:px-4"
       onClick={onClose}
+      onWheel={handleOverlayWheel}
       role="dialog"
       aria-modal="true"
       aria-label={t("ariaLabel")}
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
+        ref={modalScrollRef}
         className="relative w-full max-w-225 max-h-[90vh] overflow-x-hidden overflow-y-auto rounded-xl border border-border bg-bg-primary shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
