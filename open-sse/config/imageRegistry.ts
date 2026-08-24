@@ -8,7 +8,7 @@
 import { LMARENA_DIRECT_IMAGE_MODELS } from "./providers/registry/lmarena/directModels.ts";
 import { SEGMIND_IMAGE_PROVIDER } from "./providers/registry/segmind/imageModels.ts";
 import { KIE_IMAGE_MODELS } from "./providers/registry/kie/imageModels.ts";
-import { FREEPIK_IMAGE_PROVIDER } from "./providers/registry/freepik/index.ts";
+import { MAGNIFIC_IMAGE_PROVIDER } from "./providers/registry/magnific/index.ts";
 import { STABILITY_AI_IMAGE_MODELS } from "./providers/registry/stability-ai/imageModels.ts";
 import { CHEAPERINFERENCE_IMAGE_PROVIDER } from "./providers/registry/cheaperinference/imageModels.ts";
 import {
@@ -495,7 +495,7 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
     ],
     supportedSizes: ["1024x1024", "1024x1792", "1792x1024"],
   },
-  freepik: FREEPIK_IMAGE_PROVIDER,
+  magnific: MAGNIFIC_IMAGE_PROVIDER,
   sdwebui: {
     id: "sdwebui",
     baseUrl: "http://localhost:7860/sdapi/v1/txt2img",
@@ -884,7 +884,12 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
  * Get image provider config by ID
  */
 export function getImageProvider(providerId) {
-  return IMAGE_PROVIDERS[providerId] || null;
+  if (IMAGE_PROVIDERS[providerId]) return IMAGE_PROVIDERS[providerId];
+  if (!providerId) return null;
+  for (const config of Object.values(IMAGE_PROVIDERS)) {
+    if (config.alias === providerId) return config;
+  }
+  return null;
 }
 
 /**
@@ -918,9 +923,9 @@ export function parseImageModel(modelStr) {
     }
   }
 
-  // No provider prefix — try to find the model in every provider
+  // No provider prefix — try to find the model in every provider, excluding cookie-auth (web) bridges
   for (const [providerId, config] of Object.entries(IMAGE_PROVIDERS)) {
-    if (config.routingAliases?.includes(modelStr) || config.models.some((m) => m.id === modelStr)) {
+    if (config.authHeader !== "cookie" && (config.routingAliases?.includes(modelStr) || config.models.some((m) => m.id === modelStr))) {
       return { provider: providerId, model: modelStr };
     }
   }
@@ -1021,12 +1026,7 @@ export function getImageModelEntry(modelStr) {
   };
 }
 
-/**
- * An image input is only MANDATORY for edit-only models — those whose modalities
- * are `["image"]` with no `"text"`. Models listing both `["text", "image"]` accept
- * an image but can also run pure text-to-image, so they must NOT be gated on an
- * image input (that gate previously blocked 41 dual-modality t2i models).
- */
+/** Image input is mandatory only for edit-only models (`["image"]`, no `"text"`). Dual-modality models also accept pure t2i. */
 export function modalitiesRequireImageInput(inputModalities) {
   const list = Array.isArray(inputModalities) ? inputModalities : ["text"];
   return list.includes("image") && !list.includes("text");

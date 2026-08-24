@@ -1,11 +1,13 @@
 import { SEARCH_PROVIDERS } from "../config/searchRegistry.ts";
 import { registerExecutor, getRegisteredExecutor, hasRegisteredExecutor } from "./registry.ts";
+import type { BaseExecutor } from "./base.ts";
 import { AntigravityExecutor } from "./antigravity.ts";
 import { GithubExecutor } from "./github.ts";
 import { GheCopilotExecutor } from "./ghe-copilot.ts";
 import { QoderExecutor } from "./qoder.ts";
 import { KiroExecutor } from "./kiro.ts";
 import { CodexExecutor } from "./codex.ts";
+import { CodexAppServerExecutor } from "./codex-app-server.ts";
 import { CursorExecutor } from "./cursor.ts";
 import { TraeExecutor } from "./trae.ts";
 import { DefaultExecutor } from "./default.ts";
@@ -13,6 +15,7 @@ import { BedrockExecutor } from "./bedrock.ts";
 import { GlmExecutor } from "./glm.ts";
 import { PollinationsExecutor } from "./pollinations.ts";
 import { CloudflareAIExecutor } from "./cloudflare-ai.ts";
+import { FreebuffExecutor } from "./freebuff.ts";
 import { OpencodeExecutor } from "./opencode.ts";
 import { VertexExecutor } from "./vertex.ts";
 import { CliproxyapiExecutor } from "./cliproxyapi.ts";
@@ -95,6 +98,7 @@ const executors = {
   "amazon-q": new KiroExecutor("amazon-q"),
   bedrock: new BedrockExecutor(),
   codex: new CodexExecutor(),
+  "codex-app-server": new CodexAppServerExecutor({}, "codex-app-server"),
   "chatgpt-web-codex": new ChatGptWebCodexExecutor(),
   "cgpt-codex": new ChatGptWebCodexExecutor(),
   cursor: new CursorExecutor(),
@@ -116,6 +120,8 @@ const executors = {
   pol: new PollinationsExecutor(), // Alias
   "cloudflare-ai": new CloudflareAIExecutor(),
   cf: new CloudflareAIExecutor(), // Alias
+  freebuff: new FreebuffExecutor(),
+  fb: new FreebuffExecutor(), // Alias
   "opencode-zen": new OpencodeExecutor("opencode-zen"),
   "opencode-go": new OpencodeExecutor("opencode-go"),
   opencode: new OpencodeExecutor("opencode-zen"), // Alias for opencode-zen
@@ -233,7 +239,7 @@ const executors = {
 // Bootstrap: register every built-in in the ExecutorRegistry. registerExecutor
 // throws on duplicates, so an alias collision fails at module load, exactly as
 // loudly as a duplicate object key would have failed at lint time.
-for (const [alias, executor] of Object.entries(executors)) {
+for (const [alias, executor] of Object.entries(executors) as [string, BaseExecutor][]) {
   registerExecutor(alias, executor);
 }
 

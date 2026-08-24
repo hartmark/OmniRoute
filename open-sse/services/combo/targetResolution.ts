@@ -72,6 +72,7 @@ import {
 } from "./rrState.ts";
 import {
   applySessionStickiness,
+  clearStickyBindingsForCombo,
   normalizeStickinessMessages,
   resolveDisableSessionStickiness,
   type ApplyStickinessResult,
@@ -458,6 +459,15 @@ async function applyContinuityFilters(
       config as Record<string, unknown> | null | undefined,
       settings as Record<string, unknown> | null | undefined
     );
+  // Evict any in-memory sticky bindings this combo still owns when stickiness is
+  // disabled. Disabling stops NEW bindings, but a binding recorded while it was
+  // enabled would otherwise keep re-promoting the old connection for the rest of
+  // the 15-minute TTL — silently defeating the combo's priority order until the
+  // binding ages out or the process restarts (user report: disabling stickiness
+  // on orchestrator still pinned opencode-go/mimo-v2.5-max first).
+  if (disableSessionStickiness) {
+    clearStickyBindingsForCombo(combo.name);
+  }
   const sticky: ApplyStickinessResult = disableSessionStickiness
     ? { targets: initialOrderedTargets, messageHash: null, stuck: false }
     : await applySessionStickiness(

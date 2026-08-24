@@ -213,6 +213,12 @@ export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
     // Test Connection persists testStatus="error" on a healthy account (#8408).
     checkExpiry: true,
   },
+  "zed-hosted": {
+    // Zed Hosted Models uses a long-lived native-app access token with no
+    // expiry or refresh token. Validate presence here; real connectivity is
+    // exercised by chat requests through the ZedHostedExecutor.
+    checkExpiry: true,
+  },
   cline: CLINE_OAUTH_TEST_CONFIG,
   // ClinePass reuses the same WorkOS OAuth flow and token lifecycle as Cline.
   clinepass: CLINE_OAUTH_TEST_CONFIG,

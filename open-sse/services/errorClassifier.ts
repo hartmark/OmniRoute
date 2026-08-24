@@ -28,13 +28,17 @@ export function isEmptyContentResponse(responseBody: unknown): boolean {
 
     const content = message?.content ?? delta?.content;
     const reasoningContent = message?.reasoning_content ?? delta?.reasoning_content;
+    // opencode-routed gateways (e.g. opencode/mimo-v2.5-free) name the reasoning
+    // field `reasoning` instead of `reasoning_content` (#6623).
+    const reasoningAlt = message?.reasoning ?? delta?.reasoning;
     const hasToolCalls =
       (Array.isArray(message?.tool_calls) && (message.tool_calls as unknown[]).length > 0) ||
       (Array.isArray(delta?.tool_calls) && (delta.tool_calls as unknown[]).length > 0);
 
     const hasContent = content !== null && content !== undefined && content !== "";
     const hasReasoning =
-      reasoningContent !== null && reasoningContent !== undefined && reasoningContent !== "";
+      (reasoningContent !== null && reasoningContent !== undefined && reasoningContent !== "") ||
+      (reasoningAlt !== null && reasoningAlt !== undefined && reasoningAlt !== "");
 
     // A response truncated at the token limit (finish_reason "length") is a valid,
     // successful completion even with empty text — do not flag it as a fake success.

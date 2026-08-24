@@ -14,8 +14,8 @@ Canonical implementation: `src/lib/api/requireManagementAuth.ts`.
 
 | Credential | Typical form | Created where | Intended use | Management capability |
 |---|---|---|---|---|
-| Dashboard session | `auth_token` cookie | Dashboard login | Browser UI | Full dashboard management, subject to CSRF, locality, and always-protected-route rules |
-| Local CLI machine token | internal / local | CLI bootstrap (`omniroute` on the same machine) | Local CLI | Local management only |
+| Dashboard JWT session | `auth_token` cookie | Dashboard login | Browser UI | Full dashboard management, subject to CSRF, locality, and always-protected-route rules |
+| CLI machine-id token | internal / local | CLI bootstrap (`omniroute` on the same machine) | Local CLI | Local management only |
 | Scoped Access Token | `oma_live_…` | **Settings → Access Tokens** or `omniroute connect` | Remote CLI and management API | Must satisfy the route's required `read`, `write`, or `admin` scope |
 | Inference API key | `sk-…` (and other API-key prefixes) | **API Manager / API Keys** | `/v1/*` inference | **None** unless the key metadata includes `manage` or `admin` |
 
@@ -61,13 +61,13 @@ chat client key for automation unless you deliberately granted that scope.
 
 ## How to create and revoke
 
-### Dashboard session
+### Dashboard JWT session
 
 1. Open `/login`, sign in with the management password (`INITIAL_PASSWORD` on first boot).
 2. Cookie `auth_token` is HttpOnly. Browser dashboard uses it automatically.
 3. Log out via `/api/auth/logout`. There is no long-lived secret to copy.
 
-### Local CLI machine token
+### CLI machine-id token
 
 1. Run `omniroute` on the **same host** as the server (loopback).
 2. The CLI bootstraps a machine-id token under `~/.omniroute/` (chmod 600).

@@ -204,3 +204,75 @@ test("drainLastTimeoutContexts returns and clears recorded contexts", async () =
   const second = drainLastTimeoutContexts();
   assert.equal(second.length, 0, "second drain must return empty");
 });
+
+test("resolveTargetTimeoutMs provided: uses per-target timeout when present", async () => {
+  let aborted = false;
+  const runner = buildTargetTimeoutRunner({
+    handleSingleModel: (_b, _m, target) =>
+      new Promise<Response>((resolve) => {
+        const sig = target?.modelAbortSignal ?? undefined;
+        sig?.addEventListener("abort", () => {
+          aborted = true;
+          resolve(new Response(null, { status: 599 }));
+        });
+      }),
+    comboTargetTimeoutMs: 20,
+    resolveTargetTimeoutMs: async (target) =>
+      target?.connectionId === "conn-1" ? 50 : undefined,
+    log: noopLog,
+  });
+  const res = await runner({}, "slow-model", {
+    connectionId: "conn-1",
+    modelAbortSignal: undefined as unknown as AbortSignal,
+  } as SingleModelTarget);
+  assert.equal(res.status, 504);
+  assert.equal(aborted, true);
+  const body = await res.json();
+  assert.equal(body?.error?.code, "combo_target_timeout");
+});
+
+test("resolveTargetTimeoutMs without connection: falls back to comboTargetTimeoutMs", async () => {
+  let aborted = false;
+  const runner = buildTargetTimeoutRunner({
+    handleSingleModel: (_b, _m, target) =>
+      new Promise<Response>((resolve) => {
+        target?.modelAbortSignal?.addEventListener("abort", () => {
+          aborted = true;
+          resolve(new Response(null, { status: 599 }));
+        });
+      }),
+    comboTargetTimeoutMs: 20,
+    resolveTargetTimeoutMs: async () => undefined,
+    log: noopLog,
+  });
+  const res = await runner({}, "slow-model", {
+    connectionId: "conn-unknown",
+    modelAbortSignal: undefined as unknown as AbortSignal,
+  } as SingleModelTarget);
+  assert.equal(res.status, 504);
+  assert.equal(aborted, true);
+});
+
+test("resolveTargetTimeoutMs extended: 50ms outlives the 20ms base (does not abort at 20ms)", async () => {
+  let resolvedWith = "";
+  const runner = buildTargetTimeoutRunner({
+    handleSingleModel: async (_b, _m, target) => {
+      await new Promise((resolve) => {
+        target?.modelAbortSignal?.addEventListener("abort", resolve);
+        setTimeout(resolve, 45);
+      });
+      resolvedWith = target?.modelAbortSignal?.aborted ? "aborted" : "completed";
+      return new Response(resolvedWith, { status: resolvedWith === "aborted" ? 599 : 200 });
+    },
+    comboTargetTimeoutMs: 20,
+    resolveTargetTimeoutMs: async (target) =>
+      target?.connectionId === "conn-1" ? 50 : undefined,
+    log: noopLog,
+  });
+  const res = await runner({}, "slow-model", {
+    connectionId: "conn-1",
+    modelAbortSignal: undefined as unknown as AbortSignal,
+  } as SingleModelTarget);
+  assert.equal(res.status, 200);
+  assert.equal(resolvedWith, "completed");
+});

@@ -218,6 +218,14 @@ export function normalizeProviderSpecificData(
     delete normalized.autoFetchModels;
   }
 
+  // Per-connection operator timeout — only persist a real integer.
+  if (
+    "timeoutMs" in normalized &&
+    (typeof normalized.timeoutMs !== "number" || !Number.isInteger(normalized.timeoutMs))
+  ) {
+    delete normalized.timeoutMs;
+  }
+
   if ("preset" in normalized) {
     const preset = provider === "openrouter" ? normalizeOpenRouterPreset(normalized.preset) : null;
     if (preset) {

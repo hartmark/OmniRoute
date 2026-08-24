@@ -85,15 +85,16 @@ export const APIKEY_PROVIDERS_SPECIALTY = {
     website: "https://ideogram.ai",
     authHint: "Get API key at ideogram.ai/docs/api",
   },
-  freepik: {
-    id: "freepik",
-    alias: "fpk",
-    name: "Freepik (Mystic)",
+  magnific: {
+    id: "magnific",
+    alias: "freepik",
+    name: "Magnific",
     icon: "image",
     color: "#1B9E7F",
-    textIcon: "FP",
-    website: "https://freepik.com",
-    authHint: "Get API key at freepik.com/developers (Mystic image endpoint)",
+    textIcon: "MG",
+    website: "https://www.magnific.com",
+    authHint:
+      "Get an API key at magnific.com/user/api-keys (header x-magnific-api-key). Legacy Freepik developer keys still work.",
     hasFree: true,
     freeNote: "One-time ~€5 API credit for new accounts; pay-per-use afterward.",
   },

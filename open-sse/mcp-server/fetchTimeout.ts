@@ -34,6 +34,21 @@ function readPositiveIntEnv(raw: string | undefined): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function readMcpTimeoutOverride(
+  kind: McpFetchTimeoutKind,
+  env: Record<string, string | undefined>
+): string | undefined {
+  // Direct process.env member access so fabricated-docs / env-doc-sync see
+  // the operator knobs. Tests inject a fake env object and keep using the
+  // exported constant keys.
+  if (env === process.env) {
+    return kind === "upstream"
+      ? process.env.OMNIROUTE_MCP_UPSTREAM_TIMEOUT_MS
+      : process.env.OMNIROUTE_MCP_FETCH_TIMEOUT_MS;
+  }
+  return env[kind === "upstream" ? MCP_UPSTREAM_FETCH_TIMEOUT_ENV : MCP_FETCH_TIMEOUT_ENV];
+}
+
 /**
  * Resolve the timeout for one internal fetch class. An unset, malformed or
  * non-positive override falls back to the built-in default rather than
@@ -44,11 +59,8 @@ export function resolveMcpFetchTimeoutMs(
   kind: McpFetchTimeoutKind,
   env: Record<string, string | undefined> = process.env
 ): number {
-  const upstream = kind === "upstream";
-  const override = readPositiveIntEnv(
-    env[upstream ? MCP_UPSTREAM_FETCH_TIMEOUT_ENV : MCP_FETCH_TIMEOUT_ENV]
-  );
-  return override ?? (upstream ? MCP_UPSTREAM_FETCH_TIMEOUT_MS : MCP_FETCH_TIMEOUT_MS);
+  const override = readPositiveIntEnv(readMcpTimeoutOverride(kind, env));
+  return override ?? (kind === "upstream" ? MCP_UPSTREAM_FETCH_TIMEOUT_MS : MCP_FETCH_TIMEOUT_MS);
 }
 
 /** `AbortSignal` for one internal fetch of the given class. */

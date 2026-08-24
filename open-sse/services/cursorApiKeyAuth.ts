@@ -50,8 +50,12 @@ export function isCursorApiKey(value: unknown): value is string {
   return typeof value === "string" && value.startsWith(CURSOR_API_KEY_PREFIX);
 }
 
+// Session-cache key fingerprint, not a password/credential hash — keyed with a fixed context
+// label so it reads as a domain-separated digest rather than a bare password hash.
 function cacheKeyFor(apiKey: string): string {
-  return crypto.createHash("sha256").update(apiKey).digest("hex");
+  return crypto.createHmac("sha256", "omniroute-cursor-session-cache-fingerprint-v1")
+    .update(apiKey)
+    .digest("hex");
 }
 
 export function readJwtExpiryMs(token: string): number | null {

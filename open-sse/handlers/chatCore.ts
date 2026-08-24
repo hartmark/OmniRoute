@@ -20,6 +20,7 @@ import { checkSemanticCache } from "./chatCore/semanticCache.ts";
 import { checkLifecycle, resolveLifecycle } from "./chatCore/modelLifecyclePolicy.ts";
 import {
   shouldDefaultAllowClassifier,
+  detectClassifierFormat,
   buildDefaultAllowClaudeMessage,
 } from "./chatCore/claudeClassifierCompat.ts";
 import { applyClientUsageBuffer } from "./chatCore/clientUsageBuffer.ts";
@@ -33,7 +34,10 @@ import { assembleStreamingResponseHeaders } from "./chatCore/streamingResponseHe
 import { storeStreamingSemanticCacheResponse } from "./chatCore/streamingSemanticCacheStore.ts";
 import { assembleStreamingPipeline } from "./chatCore/streamingPipeline.ts";
 import { sanitizeChatRequestBody } from "./chatCore/sanitization.ts";
-import { applyResponsesInputPolicy } from "../services/responsesInputPolicy.ts";
+import {
+  applyReasoningInputPolicy,
+  resolveIncompatibleReasoningAction,
+} from "../services/reasoningInputPolicy.ts";
 import {
   createRoutingEvent,
   emitRoutingEvent,
@@ -202,7 +206,10 @@ import {
   deriveRequestCapabilityRequirements,
   buildCapabilityMismatchMessage,
 } from "@/shared/constants/capabilities/capabilityFilter.ts";
-import { isFeatureFlagEnabled } from "@/shared/utils/featureFlags.ts";
+import {
+  areContextWindowChecksDisabled,
+  isFeatureFlagEnabled,
+} from "@/shared/utils/featureFlags.ts";
 import { resolveNoAuthEchoModel } from "./chatCore/noAuthEchoModel.ts";
 import {
   REASONING_BUFFER_MIN_TRIGGER,
@@ -344,6 +351,7 @@ import {
   computeBillableTokens,
   normalizeExecutorResult,
   executeWithUpstreamStartTimeout,
+  resolveConnectionTimeoutMs,
 } from "./chatCore/upstreamTimeouts.ts";
 import { getModelNormalizeToolCallId, getModelPreserveOpenAIDeveloperRole } from "@/lib/db/models";
 import { getProviderCredentials, extractSessionAffinityKey } from "@/sse/services/auth";
@@ -363,12 +371,16 @@ import {
   resolveReportedServiceTier as resolveReportedServiceTierFor,
   type EffectiveServiceTier,
 } from "./chatCore/serviceTier.ts";
-import { cacheReasoningFromAssistantMessage } from "../services/reasoningCache.ts";
+import {
+  cacheReasoningFromAssistantMessage,
+  requiresReasoningReplay,
+} from "../services/reasoningCache.ts";
 import { sanitizeOpenAITool } from "../services/toolSchemaSanitizer.ts";
 import { isCompactResponsesEndpoint } from "../executors/codex.ts";
 import { persistCodexChildQuotaResponse } from "../services/codexAccount/index.ts";
 import { invalidateCodexQuotaCache } from "../services/codexQuotaFetcher.ts";
 import { translateNonStreamingResponse } from "./responseTranslator.ts";
+import { extractToolSchemaMap } from "../translator/response/openai-responses/toolSchemas.ts";
 import { unwrapClineNonStreamingEnvelope } from "./chatCore/clineResponseEnvelope.ts";
 import { extractUsageFromResponse } from "./usageExtractor.ts";
 import {
@@ -430,6 +442,7 @@ import {
 import { generateRequestId } from "@/shared/utils/requestId";
 import { isLocalStreamLifecycleError } from "@/shared/utils/circuitBreaker";
 import { shouldIsolateProbeFailures } from "@/shared/utils/probeOrigin";
+import { writeTerminalStatus } from "@/shared/utils/terminalStatus";
 import { extractFacts } from "@/lib/memory/extraction";
 import { handleToolCallExecution } from "@/lib/skills/interception";
 import { MEMORY_BUILTIN_TOOL_NAMES } from "@/lib/skills/memoryBuiltins";
@@ -508,6 +521,7 @@ export async function handleChatCore({
   conversationId = null,
   modelPinned = false,
   skipResourcePressureGuard = false,
+  reasoningTransportFallback = "drop",
   managedLease = null,
 }) {
   let { provider, model, extendedContext } = modelInfo;
@@ -766,11 +780,12 @@ export async function handleChatCore({
         classifierSettings.claudeClassifierCompat as string | undefined
       )
     ) {
+      const classifierFormat = detectClassifierFormat(body as Record<string, unknown>);
       log?.warn?.(
         "CHAT",
-        `classifier compat=${classifierSettings.claudeClassifierCompat} | short-circuit default-allow`
+        `classifier compat=${classifierSettings.claudeClassifierCompat} format=${classifierFormat} | short-circuit default-allow`
       );
-      return buildDefaultAllowClaudeMessage(requestedModel);
+      return buildDefaultAllowClaudeMessage(requestedModel, classifierFormat);
     }
   }
 
@@ -1190,11 +1205,39 @@ export async function handleChatCore({
     return cacheHit;
   }
 
-  if (targetFormat === FORMATS.OPENAI_RESPONSES && body && typeof body === "object") {
-    applyResponsesInputPolicy(
+  const reasoningInputFormat =
+    sourceFormat === FORMATS.OPENAI_RESPONSES
+      ? "responses"
+      : sourceFormat === FORMATS.OPENAI
+        ? "chat"
+        : null;
+  if (reasoningInputFormat && body && typeof body === "object") {
+    const policy = applyReasoningInputPolicy(
       body as Record<string, unknown>,
-      credentials?.providerSpecificData?.preserveEncryptedReasoning === true
+      reasoningInputFormat,
+      {
+        provider,
+        preserveEncryptedReasoning:
+          credentials?.providerSpecificData?.preserveEncryptedReasoning === true,
+        onIncompatibleReasoning: resolveIncompatibleReasoningAction({
+          reasoningTransportFallback,
+          // #11178 regressed combo steps whose combo record carries no explicit
+          // stepId/executionKey (plain model-list combos): their explicit
+          // `reasoningTransportFallback: "skip"` config was silently degraded to
+          // "drop". `isCombo` is the combo marker; step ids are optional
+          // finer-grained metadata that plain combos never set.
+          isComboStep: Boolean(isCombo) || Boolean(comboStepId || comboExecutionKey),
+          headers: clientRawRequest?.headers ?? null,
+        }),
+      }
     );
+    if (policy.incompatibleReasoning) {
+      trackPendingRequest(model, provider, connectionId, false);
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        "Reasoning continuation is not compatible with the selected target"
+      );
+    }
   }
 
   body = sanitizeChatRequestBody(body, sourceFormat, targetFormat);
@@ -2041,13 +2084,18 @@ export async function handleChatCore({
   const modelOutputCap = toPositiveInteger(
     getExplicitModelOutputCap({ provider, model: effectiveModel })
   );
+  const contextWindowChecksDisabled = areContextWindowChecksDisabled();
   const outputBudget = enforceOutputTokenBudget(
     body as Record<string, unknown>,
     finalEstimatedInputTokens,
-    finalContextLimit,
+    contextWindowChecksDisabled ? Number.MAX_SAFE_INTEGER : finalContextLimit,
     targetFormat === FORMATS.CLAUDE && sourceFormat !== FORMATS.CLAUDE ? DEFAULT_MAX_TOKENS : 0,
     modelOutputCap,
-    toPositiveInteger(resolveInputTokenCapForGate({ provider, model: effectiveModel }, { isCombo }))
+    contextWindowChecksDisabled
+      ? null
+      : toPositiveInteger(
+          resolveInputTokenCapForGate({ provider, model: effectiveModel }, { isCombo })
+        )
   );
   if (outputBudget.ok === false) {
     const exceededInputCap = outputBudget.maxInputTokens !== undefined;
@@ -2612,12 +2660,16 @@ export async function handleChatCore({
     // no-op. #7694: `modelInfo.resolvedThinkingEffort` — set when the request's model
     // id carried a `<prefix>/<model>-{effort}` synced-model alias suffix
     // (`src/sse/services/model.ts`) — takes priority over the static per-model default.
-    // See open-sse/services/defaultReasoningEffort.ts.
+    // The synced catalog's vendor-declared `defaultThinkingEffort` (OpenRouter
+    // `reasoning.default_effort`, captured by `detectDefaultThinkingEffort`) is the
+    // lowest-priority default: it only fires when neither the suffix alias nor a
+    // static operator default exists. See open-sse/services/defaultReasoningEffort.ts.
     if (targetFormat === FORMATS.OPENAI) {
       translatedBody = applyDefaultReasoningEffort(
         translatedBody,
         finalModelToUpstream,
-        (modelInfo as { resolvedThinkingEffort?: string })?.resolvedThinkingEffort
+        (modelInfo as { resolvedThinkingEffort?: string })?.resolvedThinkingEffort,
+        (modelInfo as { defaultThinkingEffort?: string })?.defaultThinkingEffort
       );
     }
   }
@@ -3037,6 +3089,9 @@ export async function handleChatCore({
                     executor,
                     provider,
                     model: modelToCall,
+                    connectionTimeoutMs: resolveConnectionTimeoutMs(
+                      execCreds?.providerSpecificData
+                    ),
                     signal: streamController.signal,
                     log,
                     execute: (signal) =>
@@ -3340,6 +3395,9 @@ export async function handleChatCore({
                         executor,
                         provider,
                         model: modelToCall,
+                        connectionTimeoutMs: resolveConnectionTimeoutMs(
+                          execCreds?.providerSpecificData
+                        ),
                         signal: streamController.signal,
                         log,
                         execute: (signal) =>
@@ -4082,29 +4140,28 @@ export async function handleChatCore({
     if (errorConnectionId && errorType) {
       try {
         if (errorType === PROVIDER_ERROR_TYPES.FORBIDDEN) {
-          // T-PROBE: a probe-origin failure (model test-all) must never
-          // remove the connection from the pool — record but stay active.
-          if (await shouldIsolateProbeFailures()) {
-            await updateProviderConnection(errorConnectionId, {
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
-              lastErrorAt: new Date().toISOString(),
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+          {
+            const probeIsolated = await shouldIsolateProbeFailures();
+            await writeTerminalStatus(
+              errorConnectionId,
+              {
+                testStatus: "banned",
+                isActive: false,
+                lastError: message,
+                lastErrorType: errorType,
+                errorCode: String(statusCode),
+              },
+              probeIsolated ? "probe" : "production"
             );
-          } else {
-            await updateProviderConnection(errorConnectionId, {
-              isActive: false,
-              testStatus: "banned",
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} banned (${statusCode}) — disabling permanently`
-            );
+            if (probeIsolated) {
+              console.warn(
+                `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+              );
+            } else {
+              console.warn(
+                `[provider] Node ${errorConnectionId} banned (${statusCode}) — disabling permanently`
+              );
+            }
           }
         } else if (errorType === PROVIDER_ERROR_TYPES.ACCOUNT_DEACTIVATED) {
           // T-PROBE: probe-origin failures (test-all) never deactivate —
@@ -4127,44 +4184,47 @@ export async function handleChatCore({
             console.warn(
               `[provider] Node ${errorConnectionId} account deactivated (${statusCode}) — has extra keys, keeping connection active`
             );
-          } else if (await shouldIsolateProbeFailures()) {
-            await updateProviderConnection(errorConnectionId, {
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
-              lastErrorAt: new Date().toISOString(),
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
-            );
           } else {
-            await updateProviderConnection(errorConnectionId, {
-              isActive: false,
-              testStatus: "deactivated",
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} account deactivated (${statusCode}) — disabling permanently`
+            const probeIsolated2 = await shouldIsolateProbeFailures();
+            await writeTerminalStatus(
+              errorConnectionId,
+              {
+                testStatus: "deactivated",
+                isActive: false,
+                lastError: message,
+                lastErrorType: errorType,
+                errorCode: String(statusCode),
+              },
+              probeIsolated2 ? "probe" : "production"
             );
+            if (probeIsolated2) {
+              console.warn(
+                `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+              );
+            } else {
+              console.warn(
+                `[provider] Node ${errorConnectionId} account deactivated (${statusCode}) — disabling permanently`
+              );
+            }
           }
         } else if (errorType === PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED) {
-          // T-PROBE: probe-origin failures never write quota state —
-          // `testStatus: "credits_exhausted"` is terminal and removes the
-          // connection from the pool; semaphore locks and per-model quota
-          // lockouts are routing mutations too. Record only (#9817).
-          if (await shouldIsolateProbeFailures()) {
-            await updateProviderConnection(errorConnectionId, {
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
-              lastErrorAt: new Date().toISOString(),
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
-            );
-          } else {
+          {
+            const probeIsolated3 = await shouldIsolateProbeFailures();
+            if (probeIsolated3) {
+              await writeTerminalStatus(
+                errorConnectionId,
+                {
+                  testStatus: "credits_exhausted",
+                  lastError: message,
+                  lastErrorType: errorType,
+                  errorCode: String(statusCode),
+                },
+                "probe"
+              );
+              console.warn(
+                `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+              );
+            } else {
             // Kimi's 403 says "billing cycle" for both an exhausted subscription and a
             // temporary request window. Read its official usage endpoint before making
             // the connection terminal: a non-zero Weekly quota plus an empty Ratelimit
@@ -4226,14 +4286,19 @@ export async function handleChatCore({
                 `[provider] Node ${errorConnectionId} ${quotaScope}-only quota exhausted (${statusCode}) for ${model} - ${Math.ceil(quotaCooldownMs / 1000)}s (cooldown_scope=${quotaScope}, ttl_source=${retryAfterMs ? "upstream" : "inferred"}, connection stays active)`
               );
             } else {
-              await updateProviderConnection(errorConnectionId, {
-                testStatus: "credits_exhausted",
-                lastErrorType: errorType,
-                lastError: message,
-                errorCode: statusCode,
-              });
+              await writeTerminalStatus(
+                errorConnectionId,
+                {
+                  testStatus: "credits_exhausted",
+                  lastError: message,
+                  lastErrorType: errorType,
+                  errorCode: String(statusCode),
+                },
+                "production"
+              );
               console.warn(`[provider] Node ${errorConnectionId} exhausted quota (${statusCode})`);
             }
+            } // close probeIsolated3 else
           }
         } else if (errorType === PROVIDER_ERROR_TYPES.UNAUTHORIZED) {
           // Normal 401 (token/session auth issue): keep account active for refresh/re-auth.
@@ -4848,12 +4913,14 @@ export async function handleChatCore({
 
     // Translate response to client's expected format (usually OpenAI)
     // Pass toolNameMap so Claude OAuth proxy_ prefix is stripped in tool_use blocks (#605)
+    const responseToolSchemas = extractToolSchemaMap(finalBody || translatedBody || body);
     let translatedResponse = needsTranslation(responsePayloadFormat, clientResponseFormat)
       ? translateNonStreamingResponse(
           responseBody,
           responsePayloadFormat,
           clientResponseFormat,
-          responseToolNameMap
+          responseToolNameMap,
+          responseToolSchemas
         )
       : responseBody;
     const memoryExtractionResponse = translatedResponse;
@@ -4880,17 +4947,20 @@ export async function handleChatCore({
               responseBody,
               responsePayloadFormat,
               FORMATS.OPENAI,
-              responseToolNameMap
+              responseToolNameMap,
+              responseToolSchemas
             )
           : responseBody;
       const firstChoice = cacheResponse?.choices?.[0];
       const msg = firstChoice?.message;
       const historyMessages = (translatedBody as { messages?: unknown[] } | null | undefined)
         ?.messages;
-      cacheReasoningFromAssistantMessage(msg, provider, model, {
-        scope: reasoningCacheScope,
-        historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
-      });
+      if (requiresReasoningReplay({ provider, model })) {
+        cacheReasoningFromAssistantMessage(msg, provider, model, {
+          scope: reasoningCacheScope,
+          historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
+        });
+      }
     } catch {
       // Cache capture is non-critical — never block the response
     }
@@ -5401,7 +5471,8 @@ export async function handleChatCore({
                 streamBody,
                 clientResponseFormat,
                 FORMATS.OPENAI,
-                responseToolNameMap
+                responseToolNameMap,
+                extractToolSchemaMap(finalBody || translatedBody || body)
               ) as Record<string, unknown>)
             : streamBody;
         const choices = cacheStreamBody.choices as
@@ -5409,10 +5480,12 @@ export async function handleChatCore({
         const msg = choices?.[0]?.message;
         const historyMessages = (translatedBody as { messages?: unknown[] } | null | undefined)
           ?.messages;
-        cacheReasoningFromAssistantMessage(msg, provider, model, {
-          scope: reasoningCacheScope,
-          historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
-        });
+        if (requiresReasoningReplay({ provider, model })) {
+          cacheReasoningFromAssistantMessage(msg, provider, model, {
+            scope: reasoningCacheScope,
+            historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
+          });
+        }
       } catch {
         // Cache capture is non-critical — never block the stream
       }

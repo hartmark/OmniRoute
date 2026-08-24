@@ -46,6 +46,30 @@ function catalogRequest() {
   return new Request("http://localhost/api/v1/models?prefix=alias");
 }
 
+/**
+ * #9147 yields in getUnifiedModelsResponse before the cache generation is bound.
+ * A single setImmediate therefore mutates during the auth prologue, where both
+ * callers correctly coalesce onto one current-generation build. Isolation is
+ * only observable after the builder has started.
+ */
+async function waitForInFlightCatalogBuild(
+  isSettled: () => boolean,
+  message: string
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (v1ModelsCatalog.__getCatalogBuilderRunsForTest() < 1) {
+    assert.equal(isSettled(), false, message);
+    assert.ok(Date.now() < deadline, "timed out waiting for catalog builder to start");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  // Drain the builder's post-auth cooperative yield so settings/capabilities
+  // are snapshotted against the in-flight generation before we write.
+  for (let i = 0; i < 4; i++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(isSettled(), false, message);
+  }
+}
+
 test.beforeEach(async () => {
   await resetStorage();
 });
@@ -221,10 +245,8 @@ test("#9199 a capability mutation during preparation detaches the obsolete gener
       return response;
     });
 
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.equal(
-    firstSettled,
-    false,
+  await waitForInFlightCatalogBuild(
+    () => firstSettled,
     "the mutation must occur while capability preparation is active"
   );
   assert.equal(
@@ -259,8 +281,10 @@ test("#9199 a mutation during a cooperative catalog build detaches the obsolete 
       return response;
     });
 
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.equal(firstSettled, false, "the mutation must occur while the first build is in flight");
+  await waitForInFlightCatalogBuild(
+    () => firstSettled,
+    "the mutation must occur while the first build is in flight"
+  );
 
   await settingsDb.updateSettings({ blockedProviders: ["auto"] });
   const secondPromise = v1ModelsCatalog.getUnifiedModelsResponse(catalogRequest());

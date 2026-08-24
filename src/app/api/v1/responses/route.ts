@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { handleChat } from "@/sse/handlers/chat";
 import { CORS_HEADERS } from "@/shared/utils/cors";
 import { createInjectionGuard } from "@/middleware/promptInjectionGuard";
@@ -114,9 +115,11 @@ async function postHandler(request: any) {
     } catch {
       return finishAdmission(errorResponse(400, "Invalid JSON body"));
     }
-    if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+    const parsed = z.object({}).passthrough().safeParse(parsedBody);
+    if (!parsed.success || Array.isArray(parsed.data)) {
       return finishAdmission(errorResponse(400, "Request body must be a JSON object"));
     }
+    parsedBody = parsed.data;
 
     const structuralAdmission = await admitChatStructure(parsedBody, admission.lease, {
       sessionId,

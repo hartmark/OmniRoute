@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
 import {
   getProviderAuditTarget,
@@ -17,6 +18,7 @@ import {
   isClaudeCodeCompatibleProvider,
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
+  resolveProviderId,
 } from "@/shared/constants/providers";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { syncToCloud } from "@/lib/cloudSync";
@@ -114,7 +116,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
     const {
-      provider,
+      provider: requestedProvider,
       apiKey,
       name,
       priority,
@@ -123,6 +125,7 @@ export async function POST(request: Request) {
       testStatus,
       providerSpecificData: incomingPsd,
     } = validation.data;
+    const provider = resolveProviderId(requestedProvider);
 
     // Business validation
     const isValidProvider =
@@ -136,8 +139,6 @@ export async function POST(request: Request) {
 
     let providerSpecificData = incomingPsd || null;
     let persistedApiKey = apiKey;
-    const allowMultipleCompatibleConnections =
-      process.env.ALLOW_MULTI_CONNECTIONS_PER_COMPAT_NODE === "true";
 
     if (provider === "qoder") {
       providerSpecificData = normalizeQoderPatProviderData(providerSpecificData || {});
@@ -172,7 +173,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
 
-      const existingConnections = await getProviderConnections({ provider });
       // Allow multiple connections for compatible nodes exactly like first-party providers
 
       providerSpecificData = {
@@ -198,7 +198,6 @@ export async function POST(request: Request) {
         );
       }
 
-      const existingConnections = await getProviderConnections({ provider });
       // Allow multiple connections for compatible nodes exactly like first-party providers
 
       providerSpecificData = {

@@ -44,6 +44,13 @@ import { getAntigravityQuotaFamily } from "@omniroute/open-sse/services/antigrav
 interface QuotaInfo {
   remainingPercentage: number;
   resetAt: string | null;
+  // #10095 — upstream explicitly told us it did NOT report this window's
+  // fraction (e.g. a fresh Antigravity account or a newly-launched
+  // -tiered model id Google hasn't wired quota telemetry for yet).
+  // `undefined`/`true` means the value is a real, upstream-reported
+  // percentage; `false` means "unknown", so callers must not treat the
+  // defaulted-to-0 `remainingPercentage` as genuine exhaustion.
+  fractionReported?: boolean;
 }
 
 interface QuotaCacheEntry {
@@ -113,7 +120,10 @@ const MAX_CONCURRENT_REFRESHES = 5;
 function isExhausted(quotas: Record<string, QuotaInfo>): boolean {
   const entries = Object.values(quotas);
   if (entries.length === 0) return false;
-  return entries.every((q) => q.remainingPercentage <= 0);
+  // #10095 — a window whose fraction was never reported by upstream must
+  // never single-handedly flip the whole connection to exhausted; treat it
+  // as available (mirrors the guard in genericQuotaFetcher.ts).
+  return entries.every((q) => q.fractionReported !== false && q.remainingPercentage <= 0);
 }
 
 /**
@@ -237,6 +247,9 @@ function normalizeQuotas(rawQuotas: Record<string, any>): Record<string, QuotaIn
           safePercentage(q.remainingPercentage) ??
           (q.total > 0 ? Math.round(((q.total - (q.used || 0)) / q.total) * 100) : 0),
         resetAt: q.resetAt || null,
+        // #10095 — thread through the "did upstream actually report this
+        // window's fraction" signal (see UsageQuota in usage/quota.ts).
+        fractionReported: q.fractionReported === false ? false : undefined,
       };
     }
   }
@@ -641,11 +654,14 @@ export function getQuotaWindowStatus(
     usedPercentage,
     resetAt,
     // If reset time has already passed, avoid stale cached percentages blocking selection.
-    reachedThreshold: windowExpired
-      ? false
-      : remainingPercentage <= 0
-        ? true
-        : usedPercentage >= thresholdPercent,
+    // #10095 — a window whose fraction upstream never reported is "unknown",
+    // not "0% remaining"; never let it reach the exhaustion threshold.
+    reachedThreshold:
+      windowExpired || window.fractionReported === false
+        ? false
+        : remainingPercentage <= 0
+          ? true
+          : usedPercentage >= thresholdPercent,
   };
 }
 

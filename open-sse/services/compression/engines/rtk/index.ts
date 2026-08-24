@@ -656,6 +656,18 @@ export function applyRtkCompression(
     };
   });
 
+  // Mirror the sibling stacked engines (headroom, session-dedup, ccr, relevance,
+  // ionizer, readLifecycle): skip the expensive createCompressionStats() pass
+  // (full JSON.stringify + tokenizer over the whole body, twice) when nothing
+  // actually changed. Untouched messages keep their original reference above,
+  // so a reference-identity scan is enough to detect the no-op case (#10765).
+  const anyMessageChanged = compressedMessages.some(
+    (message, index) => message !== messages[index]
+  );
+  if (!anyMessageChanged) {
+    return { body, compressed: false, stats: null };
+  }
+
   const compressedBody = { ...adapter.body, messages: compressedMessages };
   const stats = createCompressionStats(
     adapter.body,

@@ -27,7 +27,7 @@ returns 429 `WAITING_FOR_CAPACITY` with `Retry-After`.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/session-leases \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -147,7 +147,7 @@ Same handler as `POST /api/v1/embeddings`. Provided so Jina-compatible clients t
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/multimodal-embeddings \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

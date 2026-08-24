@@ -128,6 +128,41 @@ describe("CursorExecutor credential resolution", () => {
     const resolved = await executor.resolveExecutionCredentials(credentials);
     assert.equal(resolved, credentials);
   });
+
+  it("exchanges a crsr_ key before Agent endpoint discovery", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const sessionToken = jwt(exp);
+    const calls: Array<{ url: string; authorization: string }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({
+        url,
+        authorization: new Headers(init?.headers).get("authorization") ?? "",
+      });
+      if (url.endsWith("/auth/exchange_user_api_key")) {
+        return new Response(
+          JSON.stringify({ accessToken: sessionToken, refreshToken: sessionToken }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+      return new Response(Buffer.alloc(0), { status: 200 });
+    }) as typeof fetch;
+
+    const executor = new CursorExecutor("cursor-api");
+    const result = await executor.execute({
+      model: "auto",
+      body: { messages: [] },
+      stream: false,
+      credentials: { apiKey: API_KEY, connectionId: "cursor-api-test" },
+    });
+
+    assert.equal(result.response.status, 500);
+    assert.equal(calls.length, 2);
+    assert.match(calls[0].url, /\/auth\/exchange_user_api_key$/);
+    assert.match(calls[1].url, /ServerConfigService\/GetServerConfig$/);
+    assert.equal(calls[1].authorization, `Bearer ${sessionToken}`);
+    assert.ok(!calls[1].authorization.includes(API_KEY));
+  });
 });
 
 describe("cursor-api connection test", () => {

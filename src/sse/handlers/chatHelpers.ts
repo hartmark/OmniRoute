@@ -422,6 +422,7 @@ export async function executeChatWithBreaker({
   conversationId = null,
   modelPinned = false,
   routingComboId = null,
+  reasoningTransportFallback = "drop",
   sessionAffinityKey = null,
   managedLease = null,
 }: ExecuteChatWithBreakerOptions): Promise<ExecuteChatWithBreakerResult> {
@@ -481,6 +482,7 @@ export async function executeChatWithBreaker({
             modelPinned,
             routingComboId,
             sessionAffinityKey,
+            reasoningTransportFallback,
             managedLease,
             skipResourcePressureGuard: true,
             onCredentialsRefreshed: async (newCreds: any) => {
@@ -667,6 +669,14 @@ export function handleNoCredentials(
     );
   }
 
+  if (lastError && lastStatus) {
+    log.warn("CHAT", "Preserving last upstream error after credential exhaustion", {
+      provider,
+      model,
+      lastStatus,
+    });
+    return errorResponse(lastStatus, lastError);
+  }
   if (credentials?.allExpired) {
     // Every connection for this provider is in a terminal state (expired,
     // banned, or credits_exhausted). Surface as 401 with a re-auth hint
@@ -683,14 +693,6 @@ export function handleNoCredentials(
     const message = `[${provider}] All ${count} connection(s) ${reason} — please reconnect in the dashboard`;
     log.warn("CHAT", message);
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, message);
-  }
-  if (lastError && lastStatus) {
-    log.warn("CHAT", "Preserving last upstream error after credential exhaustion", {
-      provider,
-      model,
-      lastStatus,
-    });
-    return errorResponse(lastStatus, lastError);
   }
   if (!excludeConnectionId) {
     // Ported from upstream decolua/9router#336 (Ibrahim Ryan): surface as 404

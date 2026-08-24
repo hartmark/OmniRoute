@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSettings, getSettingsRevision, updateSettings } from "@/lib/localDb";
-import { SettingsRevisionConflictError } from "@/lib/db/settings";
+import {
+  getSettings,
+  getSettingsRevision,
+  updateSettings,
+  SettingsRevisionConflictError,
+} from "@/lib/db/settings";
 import { getRuntimePorts } from "@/lib/runtime/ports";
 import { updateSettingsSchema } from "@/shared/validation/settingsSchemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
@@ -118,6 +122,7 @@ const SECURITY_IMPACTING_KEYS = [
   "requireLogin",
   "newPassword",
   "oidcEnabled",
+  "oidcDisablePasswordLogin",
   "oidcClientSecret",
 ] as const;
 

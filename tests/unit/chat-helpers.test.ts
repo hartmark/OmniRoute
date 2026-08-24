@@ -484,6 +484,20 @@ test("handleNoCredentials maps allExpired status='expired' to the 'authenticatio
   assert.match(json.error.message, /3 connection\(s\) authentication expired/);
 });
 
+test("handleNoCredentials preserves lastError over allExpired after a failed attempt", async () => {
+  const response = handleNoCredentials(
+    { allExpired: true, expiredCount: 1, expiredStatus: "credits_exhausted" },
+    null,
+    "openai",
+    "gpt-4.1",
+    "quota exceeded",
+    402
+  );
+  const json = (await response.json()) as { error?: { message?: string } };
+  assert.equal(response.status, 402);
+  assert.match(json.error.message, /quota exceeded/i);
+});
+
 test("safeResolveProxy returns the direct route when no proxy config is present", async () => {
   const connection = await seedConnection("openai", { apiKey: "sk-openai-direct" });
 
