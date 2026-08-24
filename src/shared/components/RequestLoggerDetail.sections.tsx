@@ -1,17 +1,40 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useTranslations } from "next-intl";
+import { JsonView, defaultStyles, darkStyles } from "react-json-view-lite";
+import "react-json-view-lite/dist/index.css";
 import { ChatBubble } from "@/app/(dashboard)/dashboard/tools/traffic-inspector/components/chat/ChatBubble";
 import { buildRequestTurns, buildResponseTurns } from "@/mitm/inspector/conversationNormalizer";
 import type { InterceptedRequest, NormalizedTurn } from "@/mitm/inspector/types";
+import { useTheme } from "@/shared/hooks/useTheme";
 
 // ─── Payload Code Block ─────────────────────────────────────────────────────
+// Renders parsed payloads as a collapsible JSON tree (react-json-view-lite) so
+// deeply nested request/response bodies (tool args, message arrays) can be
+// collapsed instead of scrolled through as one raw text dump. Falls back to
+// the plain <pre> dump for anything that isn't valid JSON (e.g. a captured
+// error string), since json is display text sourced from JSON.stringify with
+// a String() fallback on failure -- it is not guaranteed parseable.
+function shouldExpandJsonNode(level: number) {
+  return level < 2;
+}
 
 export function PayloadSection({ title, json, onCopy, collapsible = true, defaultOpen = true }) {
   const t = useTranslations("requestLogger.detail");
+  const { isDark } = useTheme();
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
+
+  const parsedJson = useMemo(() => {
+    if (typeof json !== "string") return null;
+    try {
+      const value = JSON.parse(json);
+      return value !== null && typeof value === "object" ? value : null;
+    } catch {
+      return null;
+    }
+  }, [json]);
 
   const handleCopy = async () => {
     const success = await onCopy();
@@ -51,7 +74,16 @@ export function PayloadSection({ title, json, onCopy, collapsible = true, defaul
           {copied ? t("copied") : t("copy")}
         </button>
       </div>
-      {open && (
+      {open && parsedJson !== null && (
+        <div className="rounded-xl bg-black/5 dark:bg-black/30 border border-border max-h-150 overflow-auto p-4 text-xs font-mono">
+          <JsonView
+            data={parsedJson}
+            style={isDark ? darkStyles : defaultStyles}
+            shouldExpandNode={shouldExpandJsonNode}
+          />
+        </div>
+      )}
+      {open && parsedJson === null && (
         <pre className="p-4 rounded-xl bg-black/5 dark:bg-black/30 border border-border overflow-x-auto text-xs font-mono text-text-main max-h-150 overflow-y-auto leading-relaxed whitespace-pre-wrap break-words">
           {json}
         </pre>
