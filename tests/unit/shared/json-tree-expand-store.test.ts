@@ -1,43 +1,57 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
-import useJsonTreeExpandStore from "../../../src/store/jsonTreeExpandStore.ts";
+import useJsonTreeExpandStore, {
+  DEFAULT_JSON_TREE_EXPAND_LEVEL,
+} from "../../../src/store/jsonTreeExpandStore.ts";
 
-// Regression guard: collapse/expand-level controls share one global,
-// localStorage-persisted level across every JSON tree box on the page (see
-// JsonTreeExpandControls). Level is 0-indexed to match react-json-view-lite's
-// own shouldExpandNode(level) convention: 0 means nothing is expanded.
+// Regression guard: collapse/expand-level controls track one level per
+// section (sectionId), not one global level for the whole page -- different
+// payload/stream boxes carry "interesting" data at different nesting depths.
+// Level is 0-indexed to match react-json-view-lite's own
+// shouldExpandNode(level) convention: 0 means nothing is expanded.
 
 function reset() {
-  useJsonTreeExpandStore.setState({ level: 2 });
+  useJsonTreeExpandStore.setState({ levels: {} });
 }
 
 beforeEach(reset);
 
-test("collapseAll sets level to 0", () => {
-  useJsonTreeExpandStore.getState().collapseAll();
-  assert.equal(useJsonTreeExpandStore.getState().level, 0);
+test("an unset section defaults to the default expand level", () => {
+  assert.equal(useJsonTreeExpandStore.getState().levels.openaiRequest, undefined);
 });
 
-test("expandAll sets level to the max depth", () => {
-  useJsonTreeExpandStore.getState().expandAll();
-  assert.equal(useJsonTreeExpandStore.getState().level, 64);
+test("collapseAll sets only the given section's level to 0", () => {
+  useJsonTreeExpandStore.getState().collapseAll("openaiRequest");
+  assert.equal(useJsonTreeExpandStore.getState().levels.openaiRequest, 0);
+  assert.equal(useJsonTreeExpandStore.getState().levels.providerRequest, undefined);
 });
 
-test("collapseOneLevel decrements by one and clamps at 0", () => {
+test("expandAll sets only the given section's level to the max depth", () => {
+  useJsonTreeExpandStore.getState().expandAll("openaiRequest");
+  assert.equal(useJsonTreeExpandStore.getState().levels.openaiRequest, 64);
+  assert.equal(useJsonTreeExpandStore.getState().levels.providerRequest, undefined);
+});
+
+test("collapseOneLevel decrements from the default and clamps at 0, independently per section", () => {
   const { collapseOneLevel } = useJsonTreeExpandStore.getState();
-  collapseOneLevel();
-  assert.equal(useJsonTreeExpandStore.getState().level, 1);
-  collapseOneLevel();
-  assert.equal(useJsonTreeExpandStore.getState().level, 0);
-  collapseOneLevel();
-  assert.equal(useJsonTreeExpandStore.getState().level, 0);
+  collapseOneLevel("openaiRequest");
+  assert.equal(
+    useJsonTreeExpandStore.getState().levels.openaiRequest,
+    DEFAULT_JSON_TREE_EXPAND_LEVEL - 1
+  );
+  assert.equal(useJsonTreeExpandStore.getState().levels.providerRequest, undefined);
+
+  collapseOneLevel("openaiRequest");
+  collapseOneLevel("openaiRequest");
+  collapseOneLevel("openaiRequest");
+  assert.equal(useJsonTreeExpandStore.getState().levels.openaiRequest, 0);
 });
 
-test("expandOneLevel increments by one and clamps at the max", () => {
-  useJsonTreeExpandStore.setState({ level: 63 });
+test("expandOneLevel increments and clamps at the max, independently per section", () => {
+  useJsonTreeExpandStore.setState({ levels: { openaiRequest: 63 } });
   const { expandOneLevel } = useJsonTreeExpandStore.getState();
-  expandOneLevel();
-  assert.equal(useJsonTreeExpandStore.getState().level, 64);
-  expandOneLevel();
-  assert.equal(useJsonTreeExpandStore.getState().level, 64);
+  expandOneLevel("openaiRequest");
+  assert.equal(useJsonTreeExpandStore.getState().levels.openaiRequest, 64);
+  expandOneLevel("openaiRequest");
+  assert.equal(useJsonTreeExpandStore.getState().levels.openaiRequest, 64);
 });

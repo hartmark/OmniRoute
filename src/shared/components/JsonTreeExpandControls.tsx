@@ -1,17 +1,21 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import useJsonTreeExpandStore from "@/store/jsonTreeExpandStore";
+import useJsonTreeExpandStore, { useJsonTreeExpandLevel } from "@/store/jsonTreeExpandStore";
 
-// Shared collapse/expand-depth controls for every JSON tree box (PayloadSection,
-// StreamSection). The level is one global, localStorage-persisted setting (see
-// jsonTreeExpandStore) so it carries across page refreshes and between
-// different requests, and stays in sync live across every box mounted on the
-// same page at once.
-export function JsonTreeExpandControls() {
+interface JsonTreeExpandControlsProps {
+  /** Stable, locale-independent identifier for this box (e.g. "openaiRequest",
+   * "providerEventStream") -- NOT the translated title. Each sectionId tracks
+   * its own expand level, shared across different log entries but independent
+   * from every other section on the page, since different payload/stream
+   * boxes carry "interesting" data at different nesting depths. */
+  sectionId: string;
+}
+
+export function JsonTreeExpandControls({ sectionId }: JsonTreeExpandControlsProps) {
   const t = useTranslations("requestLogger.detail");
-  const { level, collapseAll, collapseOneLevel, expandOneLevel, expandAll } =
-    useJsonTreeExpandStore();
+  const level = useJsonTreeExpandLevel(sectionId);
+  const { collapseAll, collapseOneLevel, expandOneLevel, expandAll } = useJsonTreeExpandStore();
 
   const buttonClass =
     "p-1 rounded hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors";
@@ -20,7 +24,7 @@ export function JsonTreeExpandControls() {
     <div className="flex items-center gap-0.5">
       <button
         type="button"
-        onClick={collapseAll}
+        onClick={() => collapseAll(sectionId)}
         title={t("collapseAllLevels")}
         aria-label={t("collapseAllLevels")}
         className={buttonClass}
@@ -29,7 +33,7 @@ export function JsonTreeExpandControls() {
       </button>
       <button
         type="button"
-        onClick={collapseOneLevel}
+        onClick={() => collapseOneLevel(sectionId)}
         title={t("collapseOneLevel")}
         aria-label={t("collapseOneLevel")}
         className={buttonClass}
@@ -44,7 +48,7 @@ export function JsonTreeExpandControls() {
       </span>
       <button
         type="button"
-        onClick={expandOneLevel}
+        onClick={() => expandOneLevel(sectionId)}
         title={t("expandOneLevel")}
         aria-label={t("expandOneLevel")}
         className={buttonClass}
@@ -53,7 +57,7 @@ export function JsonTreeExpandControls() {
       </button>
       <button
         type="button"
-        onClick={expandAll}
+        onClick={() => expandAll(sectionId)}
         title={t("expandAllLevels")}
         aria-label={t("expandAllLevels")}
         className={buttonClass}

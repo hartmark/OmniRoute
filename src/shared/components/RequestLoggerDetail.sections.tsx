@@ -8,8 +8,9 @@ import { ChatBubble } from "@/app/(dashboard)/dashboard/tools/traffic-inspector/
 import { buildRequestTurns, buildResponseTurns } from "@/mitm/inspector/conversationNormalizer";
 import type { InterceptedRequest, NormalizedTurn } from "@/mitm/inspector/types";
 import { useTheme } from "@/shared/hooks/useTheme";
+import { useTimestampTitles, withTimestampTitleMarker } from "@/shared/hooks/useTimestampTitles";
 import { JsonTreeExpandControls } from "@/shared/components/JsonTreeExpandControls";
-import useJsonTreeExpandStore from "@/store/jsonTreeExpandStore";
+import { useJsonTreeExpandLevel } from "@/store/jsonTreeExpandStore";
 
 // ─── Payload Code Block ─────────────────────────────────────────────────────
 // Renders parsed payloads as a collapsible JSON tree (react-json-view-lite) so
@@ -19,12 +20,21 @@ import useJsonTreeExpandStore from "@/store/jsonTreeExpandStore";
 // error string), since json is display text sourced from JSON.stringify with
 // a String() fallback on failure -- it is not guaranteed parseable.
 
-export function PayloadSection({ title, json, onCopy, collapsible = true, defaultOpen = true }) {
+export function PayloadSection({
+  title,
+  sectionId,
+  json,
+  onCopy,
+  collapsible = true,
+  defaultOpen = true,
+}) {
   const t = useTranslations("requestLogger.detail");
   const { isDark } = useTheme();
-  const expandLevel = useJsonTreeExpandStore((s) => s.level);
+  const resolvedSectionId = sectionId || title;
+  const expandLevel = useJsonTreeExpandLevel(resolvedSectionId);
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
+  const treeContainerRef = useRef(null);
 
   const parsedJson = useMemo(() => {
     if (typeof json !== "string") return null;
@@ -43,6 +53,8 @@ export function PayloadSection({ title, json, onCopy, collapsible = true, defaul
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  useTimestampTitles(treeContainerRef, open && parsedJson !== null);
 
   return (
     <div>
@@ -74,14 +86,17 @@ export function PayloadSection({ title, json, onCopy, collapsible = true, defaul
             </span>
             {copied ? t("copied") : t("copy")}
           </button>
-          {parsedJson !== null && <JsonTreeExpandControls />}
+          {parsedJson !== null && <JsonTreeExpandControls sectionId={resolvedSectionId} />}
         </div>
       </div>
       {open && parsedJson !== null && (
-        <div className="rounded-xl bg-black/5 dark:bg-black/30 border border-border max-h-150 overflow-auto p-4 text-xs font-mono">
+        <div
+          ref={treeContainerRef}
+          className="rounded-xl bg-black/5 dark:bg-black/30 border border-border max-h-150 overflow-auto p-4 text-xs font-mono"
+        >
           <JsonView
             data={parsedJson}
-            style={isDark ? darkStyles : defaultStyles}
+            style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
             shouldExpandNode={(level) => level < expandLevel}
           />
         </div>
