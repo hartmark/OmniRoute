@@ -81,6 +81,18 @@ function StreamSection({ title, sectionId, json, onCopy }) {
   // itself changes, not on every unrelated re-render.
   const shouldExpandNode = useCallback((level) => level < expandLevel, [expandLevel]);
   const segments = useMemo(() => parseStreamIntoSegments(json), [json]);
+  // See the matching comment in RequestLoggerDetail.sections.tsx's
+  // PayloadSection: floats the fold icon into a fixed gutter (globals.css)
+  // so it doesn't push the label right of a sibling leaf row's label.
+  const jsonTreeStyle = useMemo(() => {
+    const base = withTimestampTitleMarker(isDark ? darkStyles : defaultStyles);
+    return {
+      ...base,
+      basicChildStyle: `${base.basicChildStyle} omni-json-row`,
+      expandIcon: `${base.expandIcon} omni-json-fold-icon`,
+      collapseIcon: `${base.collapseIcon} omni-json-fold-icon`,
+    };
+  }, [isDark]);
 
   const handleCopy = async () => {
     const success = await onCopy();
@@ -163,7 +175,7 @@ function StreamSection({ title, sectionId, json, onCopy }) {
               <div key={i} className="my-1">
                 <JsonView
                   data={segment.value}
-                  style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
+                  style={jsonTreeStyle}
                   shouldExpandNode={shouldExpandNode}
                 />
               </div>

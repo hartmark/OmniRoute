@@ -41,6 +41,19 @@ export function PayloadSection({
   // legitimately resets every node -- when expandLevel itself changes, i.e.
   // when the user actually clicks a level control.
   const shouldExpandNode = useCallback((level) => level < expandLevel, [expandLevel]);
+  // react-json-view-lite's fold icon sits inline before an expandable node's
+  // label, pushing it one icon-width right of a sibling leaf row that has no
+  // icon (e.g. "tools": vs "model":). Add a fixed gutter class (globals.css)
+  // that floats the icon out of that inline flow instead.
+  const jsonTreeStyle = useMemo(() => {
+    const base = withTimestampTitleMarker(isDark ? darkStyles : defaultStyles);
+    return {
+      ...base,
+      basicChildStyle: `${base.basicChildStyle} omni-json-row`,
+      expandIcon: `${base.expandIcon} omni-json-fold-icon`,
+      collapseIcon: `${base.collapseIcon} omni-json-fold-icon`,
+    };
+  }, [isDark]);
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
   const treeContainerRef = useRef(null);
@@ -103,11 +116,7 @@ export function PayloadSection({
           ref={treeContainerRef}
           className="rounded-xl bg-black/5 dark:bg-black/30 border border-border max-h-150 overflow-auto p-4 text-xs font-mono"
         >
-          <JsonView
-            data={parsedJson}
-            style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
-            shouldExpandNode={shouldExpandNode}
-          />
+          <JsonView data={parsedJson} style={jsonTreeStyle} shouldExpandNode={shouldExpandNode} />
         </div>
       )}
       {open && parsedJson === null && (
