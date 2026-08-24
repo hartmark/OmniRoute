@@ -8,6 +8,8 @@ import { ChatBubble } from "@/app/(dashboard)/dashboard/tools/traffic-inspector/
 import { buildRequestTurns, buildResponseTurns } from "@/mitm/inspector/conversationNormalizer";
 import type { InterceptedRequest, NormalizedTurn } from "@/mitm/inspector/types";
 import { useTheme } from "@/shared/hooks/useTheme";
+import { JsonTreeExpandControls } from "@/shared/components/JsonTreeExpandControls";
+import useJsonTreeExpandStore from "@/store/jsonTreeExpandStore";
 
 // ─── Payload Code Block ─────────────────────────────────────────────────────
 // Renders parsed payloads as a collapsible JSON tree (react-json-view-lite) so
@@ -16,13 +18,11 @@ import { useTheme } from "@/shared/hooks/useTheme";
 // the plain <pre> dump for anything that isn't valid JSON (e.g. a captured
 // error string), since json is display text sourced from JSON.stringify with
 // a String() fallback on failure -- it is not guaranteed parseable.
-function shouldExpandJsonNode(level: number) {
-  return level < 2;
-}
 
 export function PayloadSection({ title, json, onCopy, collapsible = true, defaultOpen = true }) {
   const t = useTranslations("requestLogger.detail");
   const { isDark } = useTheme();
+  const expandLevel = useJsonTreeExpandStore((s) => s.level);
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
 
@@ -63,23 +63,26 @@ export function PayloadSection({ title, json, onCopy, collapsible = true, defaul
             </button>
           )}
         </div>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-          aria-label={t("copyTitle", { title })}
-        >
-          <span className="material-symbols-outlined text-[14px]">
-            {copied ? "check" : "content_copy"}
-          </span>
-          {copied ? t("copied") : t("copy")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-text-muted hover:text-text-primary transition-colors"
+            aria-label={t("copyTitle", { title })}
+          >
+            <span className="material-symbols-outlined text-[14px]">
+              {copied ? "check" : "content_copy"}
+            </span>
+            {copied ? t("copied") : t("copy")}
+          </button>
+          {parsedJson !== null && <JsonTreeExpandControls />}
+        </div>
       </div>
       {open && parsedJson !== null && (
         <div className="rounded-xl bg-black/5 dark:bg-black/30 border border-border max-h-150 overflow-auto p-4 text-xs font-mono">
           <JsonView
             data={parsedJson}
             style={isDark ? darkStyles : defaultStyles}
-            shouldExpandNode={shouldExpandJsonNode}
+            shouldExpandNode={(level) => level < expandLevel}
           />
         </div>
       )}
