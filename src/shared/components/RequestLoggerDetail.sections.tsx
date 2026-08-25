@@ -1,19 +1,23 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useTranslations } from "next-intl";
-import { JsonView, defaultStyles, darkStyles } from "react-json-view-lite";
-import "react-json-view-lite/dist/index.css";
+import JsonView from "react18-json-view";
+import "react18-json-view/src/style.css";
+import "react18-json-view/src/dark.css";
 import { ChatBubble } from "@/app/(dashboard)/dashboard/tools/traffic-inspector/components/chat/ChatBubble";
 import { buildRequestTurns, buildResponseTurns } from "@/mitm/inspector/conversationNormalizer";
 import type { InterceptedRequest, NormalizedTurn } from "@/mitm/inspector/types";
 import { useTheme } from "@/shared/hooks/useTheme";
-import { useTimestampTitles, withTimestampTitleMarker } from "@/shared/hooks/useTimestampTitles";
+import {
+  useTimestampTitles,
+  timestampMarkerCustomizeNode,
+} from "@/shared/hooks/useTimestampTitles";
 import { JsonTreeExpandControls } from "@/shared/components/JsonTreeExpandControls";
 import { useJsonTreeExpandLevel } from "@/store/jsonTreeExpandStore";
 
 // ─── Payload Code Block ─────────────────────────────────────────────────────
-// Renders parsed payloads as a collapsible JSON tree (react-json-view-lite) so
+// Renders parsed payloads as a collapsible JSON tree (react18-json-view) so
 // deeply nested request/response bodies (tool args, message arrays) can be
 // collapsed instead of scrolled through as one raw text dump. Falls back to
 // the plain <pre> dump for anything that isn't valid JSON (e.g. a captured
@@ -32,15 +36,6 @@ export function PayloadSection({
   const { isDark } = useTheme();
   const resolvedSectionId = sectionId || title;
   const expandLevel = useJsonTreeExpandLevel(resolvedSectionId);
-  // react-json-view-lite re-seeds every node's expand state whenever this
-  // function's reference changes (it's a real effect dependency, not just an
-  // initial-mount seed -- see its ExpandableObject/ExpandableArray
-  // useEffect(..., [shouldExpandNode])). Memoized so an unrelated re-render
-  // (copy-button state, autoscroll toggle, etc.) doesn't recreate it and wipe
-  // out individually expanded/collapsed nodes; it only changes -- and
-  // legitimately resets every node -- when expandLevel itself changes, i.e.
-  // when the user actually clicks a level control.
-  const shouldExpandNode = useCallback((level) => level < expandLevel, [expandLevel]);
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
   const treeContainerRef = useRef(null);
@@ -104,9 +99,11 @@ export function PayloadSection({
           className="rounded-xl bg-black/5 dark:bg-black/30 border border-border max-h-150 overflow-auto p-4 text-xs font-mono"
         >
           <JsonView
-            data={parsedJson}
-            style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
-            shouldExpandNode={shouldExpandNode}
+            src={parsedJson}
+            dark={isDark}
+            collapsed={expandLevel}
+            customizeNode={timestampMarkerCustomizeNode}
+            displaySize
           />
         </div>
       )}

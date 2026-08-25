@@ -3,10 +3,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// The level a JSON tree node is rendered at (react-json-view-lite's own
-// shouldExpandNode callback) is 0-indexed, so this store's level uses the
-// same convention: level 0 means nothing is expanded ("collapse all"), and
-// a node at depth N is expanded when N < level.
+// The level a JSON tree node is rendered at (react18-json-view's own
+// `collapsed` numeric-depth prop) is 0-indexed, so this store's level uses
+// the same convention: level 0 means nothing is expanded ("collapse all"),
+// and a node at depth N is expanded when N < level.
 const MIN_LEVEL = 0;
 const MAX_LEVEL = 64; // deep enough for any real request/response payload
 export const DEFAULT_JSON_TREE_EXPAND_LEVEL = 2;

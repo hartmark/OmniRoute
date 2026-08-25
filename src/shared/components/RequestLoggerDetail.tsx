@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { JsonView, defaultStyles, darkStyles } from "react-json-view-lite";
-import "react-json-view-lite/dist/index.css";
+import JsonView from "react18-json-view";
+import "react18-json-view/src/style.css";
+import "react18-json-view/src/dark.css";
 import {
   PROVIDER_COLORS,
   getHttpStatusStyle as getStatusStyle,
@@ -12,7 +13,10 @@ import {
 import { formatDuration, formatApiKeyLabel, maskAccount } from "@/shared/utils/formatting";
 import { formatErrorForDisplay } from "@/shared/utils/formatting";
 import { useTheme } from "@/shared/hooks/useTheme";
-import { useTimestampTitles, withTimestampTitleMarker } from "@/shared/hooks/useTimestampTitles";
+import {
+  useTimestampTitles,
+  timestampMarkerCustomizeNode,
+} from "@/shared/hooks/useTimestampTitles";
 import { JsonTreeExpandControls } from "@/shared/components/JsonTreeExpandControls";
 import { useJsonTreeExpandLevel } from "@/store/jsonTreeExpandStore";
 import {
@@ -75,11 +79,6 @@ function StreamSection({ title, sectionId, json, onCopy }) {
   const { isDark } = useTheme();
   const resolvedSectionId = sectionId || title;
   const expandLevel = useJsonTreeExpandLevel(resolvedSectionId);
-  // See the matching comment in RequestLoggerDetail.sections.tsx's
-  // PayloadSection: react-json-view-lite re-seeds every node's expand state
-  // whenever this reference changes, so it must only change when expandLevel
-  // itself changes, not on every unrelated re-render.
-  const shouldExpandNode = useCallback((level) => level < expandLevel, [expandLevel]);
   const segments = useMemo(() => parseStreamIntoSegments(json), [json]);
 
   const handleCopy = async () => {
@@ -162,9 +161,11 @@ function StreamSection({ title, sectionId, json, onCopy }) {
             segment.type === "json" ? (
               <div key={i} className="my-1">
                 <JsonView
-                  data={segment.value}
-                  style={withTimestampTitleMarker(isDark ? darkStyles : defaultStyles)}
-                  shouldExpandNode={shouldExpandNode}
+                  src={segment.value}
+                  dark={isDark}
+                  collapsed={expandLevel}
+                  customizeNode={timestampMarkerCustomizeNode}
+                  displaySize
                 />
               </div>
             ) : (
