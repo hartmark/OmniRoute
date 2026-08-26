@@ -165,6 +165,42 @@ test("normalizes Responses API reasoning items (no `role` field) into an assista
   assert.equal((conv.request[0].blocks[0] as { text: string }).text, "Thinking about the request.");
 });
 
+test("normalizes Responses API top-level `instructions` into a system turn", () => {
+  // The Responses API carries the system prompt via a top-level
+  // `instructions` string sibling to `input`, not as an `input` message
+  // (unlike Chat Completions' `messages`/`system` or Gemini's
+  // `contents`/`systemInstruction`, both handled above) — previously
+  // silently dropped, matching the `function_call`/`reasoning` gap fixed
+  // above.
+  const req = makeReq({
+    path: "/v1/responses",
+    requestBody: JSON.stringify({
+      instructions: "You are helpful.",
+      input: [{ role: "user", content: [{ type: "input_text", text: "Hello!" }] }],
+    }),
+  });
+  const conv = normalizeConversation(req);
+  assert.ok(conv);
+  assert.equal(conv.request.length, 2);
+  assert.equal(conv.request[0].role, "system");
+  assert.equal(conv.request[0].blocks[0].type, "text");
+  assert.equal((conv.request[0].blocks[0] as { text: string }).text, "You are helpful.");
+  assert.equal(conv.request[1].role, "user");
+});
+
+test("omits the system turn when Responses API `instructions` is absent", () => {
+  const req = makeReq({
+    path: "/v1/responses",
+    requestBody: JSON.stringify({
+      input: [{ role: "user", content: [{ type: "input_text", text: "Hello!" }] }],
+    }),
+  });
+  const conv = normalizeConversation(req);
+  assert.ok(conv);
+  assert.equal(conv.request.length, 1);
+  assert.equal(conv.request[0].role, "user");
+});
+
 test("normalizes Anthropic request with top-level system + tool_use response", () => {
   const req = makeReq({
     host: "api.anthropic.com",

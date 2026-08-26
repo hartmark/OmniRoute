@@ -322,7 +322,18 @@ export function buildRequestTurns(body: unknown): NormalizedTurn[] | null {
     return [{ role: "user", blocks: [{ type: "text", text: obj.input }] }];
   }
   if (Array.isArray(obj.input)) {
-    return turnsFromOpenAiMessages(obj.input);
+    // OpenAI Responses API requests carry the system prompt via top-level
+    // `instructions`, sibling to `input`, not as an `input` message — unlike
+    // `messages/system` (Chat Completions/Anthropic) or
+    // `contents/systemInstruction` (Gemini) handled above. Without this,
+    // the conversation view silently drops the system turn for every
+    // Responses-API request.
+    const turns: NormalizedTurn[] = [];
+    if (typeof obj.instructions === "string" && obj.instructions.length > 0) {
+      turns.push({ role: "system", blocks: [{ type: "text", text: obj.instructions }] });
+    }
+    turns.push(...turnsFromOpenAiMessages(obj.input));
+    return turns;
   }
 
   return null;
