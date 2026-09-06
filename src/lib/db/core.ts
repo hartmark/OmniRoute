@@ -4,7 +4,7 @@
  * All domain modules import `getDbInstance` and helpers from here.
  */
 
-import type { SqliteAdapter } from "./adapters/types";
+import type { SqliteAdapter, PreparedStatement } from "./adapters/types";
 import {
   tryOpenSync,
   getSqlJsAdapter,
@@ -16,6 +16,7 @@ import path from "path";
 import { retryProbeIfTransient } from "./probeUtils";
 import fs from "fs";
 import { resolveWritableDataDir, getLegacyDotDataDir } from "../dataPaths";
+import { isNextBuildPhase } from "../buildPhase";
 import { runMigrations } from "./migrationRunner";
 import { runDbHealthCheck } from "./healthCheck";
 import { resetAllDbModuleState } from "./stateReset";
@@ -39,6 +40,7 @@ import { invalidateDbCache } from "./readCache";
 import { rowToCamel } from "./caseMapping";
 import { isAutomatedTestProcess } from "@/shared/utils/testProcess";
 import { parseModelAccessMode } from "./apiKeys/modelAccessMode";
+import { getExistingDbInstance as getDb, setDbInstance as setDb } from "./singleton";
 // Re-exported so existing call sites that pull these helpers off the core module keep working.
 export { toSnakeCase, toCamelCase, objToSnake, rowToCamel, cleanNulls } from "./caseMapping";
 import {
@@ -84,7 +86,18 @@ type CriticalTableSpec = {
 
 export const isCloud = typeof globalThis.caches === "object" && globalThis.caches !== null;
 
-export const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+// Next.js build workers sometimes drop NEXT_PHASE from their env, so
+// OMNIROUTE_BUILDING=1 (set by build-next-isolated.mjs and inherited by every
+// spawned build worker) is the reliable build signal. During build the native
+// better-sqlite3 addon must never load: its Statement destructor aborts with
+// SIGABRT when the worker thread exits (assertion in
+// node::RemoveEnvironmentCleanupHook, env == nullptr). (#10060)
+//
+// Delegates to the shared leaf helper (src/lib/buildPhase.ts) so every build
+// signal is defined in exactly one place. Kept as a module const (evaluated at
+// import time) to preserve the existing eager-boolean semantics of the many
+// `if (isBuildPhase || isCloud)` call sites across the db layer.
+export const isBuildPhase = isNextBuildPhase();
 
 // ──────────────── Paths ────────────────
 
@@ -502,7 +515,6 @@ const SCHEMA_SQL = `
 // Module-level `let` resets on every webpack recompile, causing connection leaks.
 
 declare global {
-  var __omnirouteDb: SqliteAdapter | undefined;
   // Cycle-breaker counter for the probe-failed/restore cascade. Survives
   // Next.js HMR re-evaluations so concurrent subsystems all see the same
   // count and we abort with a clear error instead of looping forever.
@@ -515,18 +527,6 @@ declare global {
   // (BATCH, HealthCheck, ProviderLimitsSync, ModelSync) re-throws the same
   // OOM error forever with no terminal diagnostic.
   var __omnirouteDbOomFailureCount: number | undefined;
-}
-
-function getDb(): SqliteDatabase | null {
-  return globalThis.__omnirouteDb ?? null;
-}
-
-function setDb(db: SqliteDatabase | null): void {
-  if (db) {
-    globalThis.__omnirouteDb = db;
-  } else {
-    delete globalThis.__omnirouteDb;
-  }
 }
 
 function checkpointDb(db: SqliteDatabase, mode: CheckpointMode = "TRUNCATE"): boolean {
@@ -962,6 +962,51 @@ function startDbHealthCheckScheduler(db: SqliteDatabase) {
   dbHealthCheckTimer.unref?.();
 }
 
+let walTruncateTimer: NodeJS.Timeout | null = null;
+
+function getWalTruncateIntervalMs(): number {
+  const rawValue = process.env.OMNIROUTE_WAL_TRUNCATE_INTERVAL_MS;
+  if (typeof rawValue === "string" && rawValue.trim().length > 0) {
+    const parsed = Number(rawValue);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return 6 * 60 * 60 * 1000;
+}
+
+function clearWalTruncateScheduler() {
+  if (walTruncateTimer) {
+    clearInterval(walTruncateTimer);
+    walTruncateTimer = null;
+  }
+}
+
+// Auto-checkpoint moves WAL pages back into the main DB file but never shrinks the WAL
+// file itself; only wal_checkpoint(TRUNCATE) does, and a long-running server never closes its DB.
+function startWalTruncateScheduler(db: SqliteDatabase) {
+  clearWalTruncateScheduler();
+  if (isCloud || isBuildPhase || isAutomatedTestProcess()) return;
+
+  const intervalMs = getWalTruncateIntervalMs();
+  if (intervalMs <= 0) return;
+
+  walTruncateTimer = setInterval(() => {
+    try {
+      if (!db.open) return;
+      // TRUNCATE waits for readers; under concurrent write load it can no-op without
+      // shrinking the file. That is expected — it retries on the next tick.
+      if (checkpointDb(db, "TRUNCATE")) {
+        console.log("[DB] Periodic SQLite WAL checkpoint completed (TRUNCATE).");
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[DB] Periodic WAL truncate failed:", message);
+    }
+  }, intervalMs);
+  walTruncateTimer.unref?.();
+}
+
 export function runManagedDbHealthCheck(options?: { autoRepair?: boolean }) {
   const db = getDbInstance();
   return runDbHealthCheck(db, {
@@ -977,7 +1022,34 @@ export function getDbInstance(): SqliteDatabase {
 
   if (isCloud || isBuildPhase) {
     if (isBuildPhase) {
-      console.log("[DB] Build phase detected — using in-memory SQLite (read-only)");
+      console.log("[DB] Build phase detected — using no-op SQLite stub (never queried)");
+      // A no-op stub during build avoids loading the better-sqlite3 native
+      // bindings entirely. The native Statement destructor crashes with SIGABRT
+      // when the Next.js build worker thread exits (assertion in
+      // node::RemoveEnvironmentCleanupHook, env == nullptr). The DB is never
+      // actually queried during build — it only exists so module-eval that
+      // touches getDbInstance() at build time does not throw. (#10060)
+      const noopStatement: PreparedStatement = {
+        run: () => ({ changes: 0, lastInsertRowid: 0 }),
+        get: () => undefined,
+        all: () => [],
+      };
+      const stubDb: SqliteDatabase = {
+        driver: "sql.js",
+        open: true,
+        name: ":memory:",
+        prepare: () => noopStatement,
+        exec: () => {},
+        pragma: () => undefined,
+        transaction: <T>(fn: (...args: unknown[]) => T) => fn,
+        immediate: (fn: () => void) => fn(),
+        backup: async () => {},
+        checkpoint: () => {},
+        close: () => {},
+        raw: null,
+      };
+      setDb(stubDb);
+      return stubDb;
     }
     const memoryDb = openSqliteDatabase(":memory:");
     memoryDb.pragma("journal_mode = WAL");
@@ -1046,10 +1118,10 @@ export function getDbInstance(): SqliteDatabase {
   // This is needed so the migration runner skips the mass-migration safety abort
   // that would otherwise trigger because heuristic seeding marks some migrations
   // as applied, making the fresh DB look like a wiped existing DB (#1328).
-  // #9934: also classify as fresh a file that `omniroute setup` created with
-  // only the clipped skeleton schema (see the probe below) — even though the
-  // file exists, it has never had migrations run.
-  let isNewDb = !fs.existsSync(sqliteFile);
+  // #9934: also classify a setup-created skeleton as logically fresh for the mass guard,
+  // while tracking its pre-existing file independently for mandatory snapshot safety.
+  const databaseExistedBeforeInitialization = fs.existsSync(sqliteFile);
+  let isNewDb = !databaseExistedBeforeInitialization;
 
   // Detect and handle old schema format — preserve data when possible (#146)
   // Uses a single probe connection that becomes the real connection when possible.
@@ -1200,13 +1272,23 @@ export function getDbInstance(): SqliteDatabase {
   }
 
   const db = openSqliteDatabase(sqliteFile);
-  db.pragma("journal_mode = WAL");
+  // Emit the same "[DB] Driver: ..." line openDatabaseAsync() prints so the
+  // packaged-app smoke guard (#7592) can assert the native driver was
+  // selected on the server's primary DB path too, not only the backup-import
+  // route.
+  console.log(`[DB] Driver: ${db.driver} | file: ${sqliteFile}`);
   // better-sqlite3 is synchronous, so a contended write parks the Node event loop for up to
   // busy_timeout ms (a 0-CPU freeze that stacks under load → /health stops responding). The
   // hot-path writers here (usage_history, call_logs) are best-effort and the WinUI host opens
   // the same DB, so cap the block at 2s instead of 5s: normal writes complete in <1ms, and a
   // contended op can no longer freeze the loop past the host watchdog's 6s liveness probe.
+  //
+  // Install the busy handler before the connection's first statement. `journal_mode = WAL`
+  // needs a SHARED lock, and another process closing its WAL connection briefly holds the
+  // file EXCLUSIVE (checkpoint + WAL delete); node:sqlite opens with busy timeout 0, so with
+  // the pragmas in the other order that window surfaced as `database is locked` at startup.
   db.pragma("busy_timeout = 2000");
+  db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
   db.pragma(`cache_size = -${DEFAULT_DATABASE_SETTINGS.optimization.cacheSize}`);
   db.pragma("temp_store = MEMORY");
@@ -1228,7 +1310,7 @@ export function getDbInstance(): SqliteDatabase {
     VALUES ('001', 'initial_schema');
   `);
 
-  runMigrations(db, { isNewDb });
+  runMigrations(db, { isNewDb, databaseExistedBeforeInitialization });
   // Fresh installs need the same post-migration index guarantee as upgraded
   // databases, including recovery from an interrupted migration 127 attempt.
   ensureUsageHistoryAccountIndex(db);
@@ -1308,6 +1390,7 @@ export function getDbInstance(): SqliteDatabase {
   }
 
   startDbHealthCheckScheduler(db);
+  startWalTruncateScheduler(db);
   // Log the resolved absolute DATA_DIR + SQLITE_FILE once at init so a
   // multi-replica / Docker volume-topology mismatch (each replica opening a
   // different on-disk DB → "phantom"/missing combos & connections) is
@@ -1335,6 +1418,7 @@ export function pingDb(): boolean {
 
 export function closeDbInstance(options?: { checkpointMode?: CheckpointMode | null }): boolean {
   clearDbHealthCheckScheduler();
+  clearWalTruncateScheduler();
   const db = getDb();
   if (!db) return false;
 

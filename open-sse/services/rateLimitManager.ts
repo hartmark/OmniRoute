@@ -9,10 +9,7 @@
  */
 
 import Bottleneck from "bottleneck";
-import {
-  applyBottleneckDoExpirePatch,
-  applyBottleneckHeartbeatPatch,
-} from "./bottleneckPatch.ts";
+import { applyBottleneckDoExpirePatch, applyBottleneckHeartbeatPatch } from "./bottleneckPatch.ts";
 import { parseRetryAfterFromBody } from "./accountFallback.ts";
 import { getAntigravityQuotaFamily } from "./antigravityQuotaFamily.ts";
 import { getProviderCategory } from "../config/providerRegistry.ts";
@@ -100,6 +97,13 @@ let initialized = false;
 
 let currentRequestQueueSettings: RequestQueueSettings = DEFAULT_RESILIENCE_SETTINGS.requestQueue;
 export const ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS = 60_000;
+// MaxAI proxies reasoning models (deepseek-r1, gpt-5.6-thinking, grok-4.5,
+// gemini-3.1-pro-preview, grok-4-1-fast-reasoning) whose single upstream turn
+// legitimately runs tens of seconds to minutes. The 15s default execution
+// expiration (Bottleneck `expiration`, applied AFTER dispatch) kills those mid
+// think and surfaces a spurious local 504. Floor MaxAI at 5 min — the same
+// ceiling waitForCooldown.budgetMs uses — so slow reasoning turns complete.
+export const MAXAI_REQUEST_QUEUE_MAX_WAIT_MS = 300_000;
 
 const limiterEffectiveSettings = new WeakMap<Bottleneck, Bottleneck.ConstructorOptions>();
 const preservedReplacementSettings = new Map<string, Bottleneck.ConstructorOptions>();
@@ -143,28 +147,55 @@ function isAutoEnableActive(settings: RequestQueueSettings): boolean {
 const EFFECTIVELY_INFINITE = Number.MAX_SAFE_INTEGER;
 const EFFECTIVELY_INFINITE_CONCURRENCY = 1000;
 
+// Shared override-resolution rule for every per-connection rate-limit field:
+// a positive override wins, 0 or missing falls through to `fallback`.
+function resolveOverride(override: number | undefined | null, fallback: number): number {
+  return typeof override === "number" && override > 0 ? override : fallback;
+}
+
 // Resolve an RPM override. 0 or missing means "infinite" (no rate cap).
 function resolveRpm(override: number | undefined | null): number {
-  return typeof override === "number" && override > 0 ? override : EFFECTIVELY_INFINITE;
+  return resolveOverride(override, EFFECTIVELY_INFINITE);
 }
 
 // Resolve a minTime override. 0 or missing means "no minimum gap".
 function resolveMinTime(override: number | undefined | null): number {
-  return typeof override === "number" && override > 0 ? override : 0;
+  return resolveOverride(override, 0);
 }
 
 // Resolve a maxConcurrent override. 0 or missing means "effectively infinite".
 function resolveMaxConcurrent(override: number | undefined | null): number {
-  return typeof override === "number" && override > 0 ? override : EFFECTIVELY_INFINITE_CONCURRENCY;
+  return resolveOverride(override, EFFECTIVELY_INFINITE_CONCURRENCY);
 }
 
 export function resolveRequestQueueMaxWaitMs(
   provider: string,
-  configuredMaxWaitMs: number = currentRequestQueueSettings.maxWaitMs
+  configuredMaxWaitMs: number = currentRequestQueueSettings.maxWaitMs,
+  connectionId?: string
 ): number {
-  return provider.trim().toLowerCase() === "zai-web"
-    ? Math.max(configuredMaxWaitMs, ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS)
-    : configuredMaxWaitMs;
+  const p = provider.trim().toLowerCase();
+  let legacyDefault = configuredMaxWaitMs;
+  if (p === "zai-web") {
+    legacyDefault = Math.max(configuredMaxWaitMs, ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS);
+  } else if (p === "maxai" || p === "mx") {
+    // MaxAI's slow reasoning models legitimately need up to ~5 min; floor the
+    // per-request execution budget so they aren't cut off early.
+    legacyDefault = Math.max(configuredMaxWaitMs, MAXAI_REQUEST_QUEUE_MAX_WAIT_MS);
+  }
+  const override = connectionId
+    ? connectionRateLimitOverrides.get(connectionId)?.maxWaitMs
+    : undefined;
+  return resolveOverride(override, legacyDefault);
+}
+
+/**
+ * Limiter-managed execution backstop (Bottleneck `expiration`). Starts only
+ * after a job leaves QUEUED; bounds execution, never queue wait. Kept strictly
+ * separate from the queue-wait budget (`maxWaitMs`) so the backstop cannot
+ * undercut upstream fetch-start timeouts on non-incremental gateways.
+ */
+export function resolveExecutionMaxWaitMs(): number {
+  return currentRequestQueueSettings.executionMaxWaitMs;
 }
 
 function buildLimiterDefaults() {
@@ -329,7 +360,8 @@ export async function initializeRateLimits() {
   applyBottleneckHeartbeatPatch();
 
   try {
-    const { getCachedProviderConnections, getSettings } = await import("@/lib/localDb");
+    const { getCachedProviderConnections } = await import("@/lib/db/readCache");
+    const { getSettings } = await import("@/lib/db/settings");
     const [connections, settings] = await Promise.all([
       getCachedProviderConnections(),
       getSettings(),
@@ -376,7 +408,7 @@ export async function applyRequestQueueSettings(nextSettings: RequestQueueSettin
   currentRequestQueueSettings = { ...nextSettings };
   // Global policy changes invalidate snapshots from the previous generation.
   preservedReplacementSettings.clear();
-  const { getCachedProviderConnections } = await import("@/lib/localDb");
+  const { getCachedProviderConnections } = await import("@/lib/db/readCache");
   const connections = await getCachedProviderConnections();
   // Also discard any snapshot created while the asynchronous DB read yielded.
   preservedReplacementSettings.clear();
@@ -549,19 +581,17 @@ export async function withRateLimit(provider, connectionId, model, fn, signal = 
 
   // Proactive sliding-window fallback for header-less providers with a declared cap
   // (Fase 8.2). No-op unless PROVIDER_DEFAULT_RATE_LIMITS has an entry for `provider`.
-  const maxWaitMs = resolveRequestQueueMaxWaitMs(provider);
-  await awaitProviderDefaultSlot(
-    provider,
-    connectionId,
-    signal,
-    maxWaitMs
-  );
+  const maxWaitMs = resolveRequestQueueMaxWaitMs(provider, undefined, connectionId);
+  await awaitProviderDefaultSlot(provider, connectionId, signal, maxWaitMs);
 
   const limiter = getLimiter(provider, connectionId, model);
-  // Bottleneck's `expiration` starts only after a job leaves QUEUED. The
-  // legacy maxWaitMs setting therefore bounds limiter-managed execution; it
-  // is not a queue-wait deadline.
-  const executionExpirationMs = maxWaitMs;
+  // Bottleneck's `expiration` starts only after a job leaves QUEUED, so it
+  // bounds limiter-managed execution — not queue wait. It is therefore fed by
+  // the dedicated execution backstop (`requestQueue.executionMaxWaitMs`),
+  // never by the queue-wait budget: non-incremental gateways legitimately run
+  // for minutes before first bytes, and an expiration at the queue budget
+  // killed them mid-flight (false 504s on opencode-go/glm-5.3-flash).
+  const executionExpirationMs = resolveExecutionMaxWaitMs();
   const scheduleOpts =
     executionExpirationMs && executionExpirationMs > 0 ? { expiration: executionExpirationMs } : {};
 
@@ -607,7 +637,14 @@ export async function withRateLimit(provider, connectionId, model, fn, signal = 
       }
 
       try {
-        return await Promise.race([limiter.schedule(scheduleOpts, fn), abortPromise]);
+        // Race the work against the abort signal. When abort wins, fn is still
+        // running inside Bottleneck's limiter — its eventual rejection must not
+        // surface as an unhandledRejection. The .catch(noop) silences only the
+        // orphaned branch; the real rejection comes from abortPromise.
+        const scheduled = limiter.schedule(scheduleOpts, fn);
+        scheduled.catch(() => {}); // prevent unhandledRejection when abort wins
+        abortPromise.catch(() => {}); // prevent unhandledRejection when scheduled wins
+        return await Promise.race([scheduled, abortPromise]);
       } finally {
         if (abortListener) {
           signal.removeEventListener("abort", abortListener);
@@ -630,7 +667,7 @@ export async function withRateLimit(provider, connectionId, model, fn, signal = 
       throw markLocalRateLimitError(
         new Error(
           `Request exceeded OmniRoute's local rate-limit execution expiration ` +
-            `(legacy resilienceSettings.requestQueue.maxWaitMs=${executionExpirationMs}ms) for ` +
+            `(resilienceSettings.requestQueue.executionMaxWaitMs=${executionExpirationMs}ms) for ` +
             `${model ? `${provider}/${model}` : provider}. Bottleneck applies this deadline only ` +
             `after dispatch; it does not bound queue wait and is not an upstream-generated timeout.`,
           { cause: err }
@@ -757,7 +794,7 @@ export function updateFromHeaders(provider, connectionId, headers, status, model
         );
       } else if (remaining > limit * 0.5) {
         // Plenty of headroom — relax the limiter
-        updates.minTime = 0;
+        updates.minTime = resolveMinTime(currentRequestQueueSettings.minTimeBetweenRequestsMs);
         updates.reservoir = null;
         updates.reservoirRefreshAmount = null;
         updates.reservoirRefreshInterval = null;

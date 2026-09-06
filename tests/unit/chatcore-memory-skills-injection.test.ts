@@ -9,14 +9,14 @@ import path from "node:path";
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-mem-skills-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
 
-const { getSkillsProviderForFormat, injectMemoryAndSkills } =
+const { getSkillsProviderForFormat, injectMemoryAndSkills, sortToolsByName } =
   await import("../../open-sse/handlers/chatCore/memorySkillsInjection.ts");
 const { FORMATS } = await import("../../open-sse/translator/formats.ts");
 const core = await import("../../src/lib/db/core.ts");
 
 test.after(() => {
   core.resetDbInstance();
-  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 // ─── getSkillsProviderForFormat (pure switch) ────────────────────────────────
@@ -36,6 +36,20 @@ test("getSkillsProviderForFormat maps OPENAI and any unknown format -> openai (d
   assert.equal(getSkillsProviderForFormat("codex"), "openai");
   assert.equal(getSkillsProviderForFormat("totally-unknown"), "openai");
   assert.equal(getSkillsProviderForFormat(""), "openai");
+});
+
+test("sortToolsByName sorts tools deterministically by function name or top-level name", () => {
+  const unsorted = [
+    { function: { name: "z_tool" } },
+    { name: "a_tool" },
+    { function: { name: "m_tool" } },
+  ];
+  const sorted = sortToolsByName(unsorted);
+  assert.deepEqual(sorted, [
+    { name: "a_tool" },
+    { function: { name: "m_tool" } },
+    { function: { name: "z_tool" } },
+  ]);
 });
 
 // ─── injectMemoryAndSkills ───────────────────────────────────────────────────
@@ -125,4 +139,122 @@ test("injectMemoryAndSkills resolves cleanly for a CLAUDE-format body with no ow
 
   assert.equal(result.memorySettings, null);
   assert.equal(result.body, body);
+});
+
+test("injectMemoryAndSkills injects memory tools when memory is enabled", async () => {
+  const { updateSettings } = await import("../../src/lib/db/settings.ts");
+  const { invalidateMemorySettingsCache } = await import("../../src/lib/memory/settings.ts");
+  const { MEMORY_BUILTIN_TOOL_NAMES } = await import("../../src/lib/skills/memoryBuiltins.ts");
+
+  await updateSettings({ memoryEnabled: true, memoryMaxTokens: 2000 });
+  invalidateMemorySettingsCache();
+
+  const body: Record<string, unknown> = {
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "hello" }],
+    tools: [{ type: "function", function: { name: "some_client_tool", description: "x" } }],
+  };
+
+  const result = await injectMemoryAndSkills({
+    body,
+    memoryOwnerId: "owner-mem-on",
+    provider: "openai",
+    effectiveModel: "gpt-4o",
+    sourceFormat: FORMATS.OPENAI,
+    targetFormat: FORMATS.OPENAI,
+    backgroundReason: null,
+    log: { debug: () => {} },
+  });
+
+  assert.equal(result.memorySettings?.enabled, true);
+  const toolNames = (result.body.tools as { function?: { name?: string }; name?: string }[]).map(
+    (tool) => tool.function?.name ?? tool.name
+  );
+  for (const memoryTool of MEMORY_BUILTIN_TOOL_NAMES) {
+    assert.ok(
+      toolNames.includes(memoryTool),
+      `expected ${memoryTool} to be injected into body.tools`
+    );
+  }
+  assert.ok(toolNames.includes("some_client_tool"), "client tools are preserved");
+
+  invalidateMemorySettingsCache();
+});
+
+test("injectMemoryAndSkills does not inject server memory tools for stream requests", async () => {
+  const { updateSettings } = await import("../../src/lib/db/settings.ts");
+  const { invalidateMemorySettingsCache } = await import("../../src/lib/memory/settings.ts");
+  const { MEMORY_BUILTIN_TOOL_NAMES } = await import("../../src/lib/skills/memoryBuiltins.ts");
+
+  await updateSettings({ memoryEnabled: true, memoryMaxTokens: 2000 });
+  invalidateMemorySettingsCache();
+
+  const body: Record<string, unknown> = {
+    model: "gpt-4o",
+    stream: true,
+    messages: [{ role: "user", content: "hello" }],
+  };
+
+  const result = await injectMemoryAndSkills({
+    body,
+    memoryOwnerId: "owner-stream",
+    provider: "openai",
+    effectiveModel: "gpt-4o",
+    sourceFormat: FORMATS.OPENAI,
+    targetFormat: FORMATS.OPENAI,
+    backgroundReason: null,
+    log: { debug: () => {} },
+  });
+
+  assert.equal(result.memorySettings?.enabled, true);
+  const tools =
+    (result.body.tools as { function?: { name?: string }; name?: string }[] | undefined) ?? [];
+  const toolNames = tools.map((tool) => tool.function?.name ?? tool.name);
+  for (const memoryTool of MEMORY_BUILTIN_TOOL_NAMES) {
+    assert.equal(
+      toolNames.includes(memoryTool),
+      false,
+      `expected ${memoryTool} to be absent for stream requests (client-side MCP path)`
+    );
+  }
+
+  invalidateMemorySettingsCache();
+});
+
+test("injectMemoryAndSkills does not inject memory tools when memory is disabled", async () => {
+  const { updateSettings } = await import("../../src/lib/db/settings.ts");
+  const { invalidateMemorySettingsCache } = await import("../../src/lib/memory/settings.ts");
+  const { MEMORY_BUILTIN_TOOL_NAMES } = await import("../../src/lib/skills/memoryBuiltins.ts");
+
+  await updateSettings({ memoryEnabled: false });
+  invalidateMemorySettingsCache();
+
+  const body: Record<string, unknown> = {
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "hello" }],
+  };
+
+  const result = await injectMemoryAndSkills({
+    body,
+    memoryOwnerId: "owner-mem-off",
+    provider: "openai",
+    effectiveModel: "gpt-4o",
+    sourceFormat: FORMATS.OPENAI,
+    targetFormat: FORMATS.OPENAI,
+    backgroundReason: null,
+    log: { debug: () => {} },
+  });
+
+  const tools =
+    (result.body.tools as { function?: { name?: string }; name?: string }[] | undefined) ?? [];
+  const toolNames = tools.map((tool) => tool.function?.name ?? tool.name);
+  for (const memoryTool of MEMORY_BUILTIN_TOOL_NAMES) {
+    assert.equal(
+      toolNames.includes(memoryTool),
+      false,
+      `expected ${memoryTool} to be absent when memory is disabled`
+    );
+  }
+
+  invalidateMemorySettingsCache();
 });

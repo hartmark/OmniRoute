@@ -151,13 +151,13 @@ test("codebuddy-cn registry entry has expected shape", () => {
     "glm-5.0",
     "glm-5.0-turbo",
     "glm-5v-turbo",
-    "glm-4.7",
     "minimax-m3",
     "minimax-m2.7",
     "kimi-k2.7",
     "kimi-k2.6",
     "kimi-k2.5",
     "hy3-preview",
+    "hy3",
     "deepseek-v4-pro",
     "deepseek-v4-flash",
     "deepseek-v3-2-volc",
@@ -185,10 +185,10 @@ test("codebuddy-cn vision flag is set on the visual models", () => {
   }
 });
 
-test("getExecutor returns the CodeBuddyCnExecutor for 'codebuddy-cn' and the 'cbcn' alias", () => {
-  const e = getExecutor("codebuddy-cn");
+test("getExecutor returns the CodeBuddyCnExecutor for 'codebuddy-cn' and the 'cbcn' alias", async () => {
+  const e = await getExecutor("codebuddy-cn");
   assert.ok(e instanceof CodeBuddyCnExecutor, "executor must be CodeBuddyCnExecutor");
-  const aliasExec = getExecutor("cbcn");
+  const aliasExec = await getExecutor("cbcn");
   assert.ok(aliasExec instanceof CodeBuddyCnExecutor, "alias 'cbcn' must resolve to same executor");
 });
 

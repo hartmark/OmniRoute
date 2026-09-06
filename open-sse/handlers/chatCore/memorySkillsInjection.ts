@@ -1,14 +1,37 @@
 import { retrieveMemories } from "@/lib/memory/retrieval";
-import { getMemorySettings, DEFAULT_MEMORY_SETTINGS, toMemoryRetrievalConfig } from "@/lib/memory/settings";
+import {
+  getMemorySettings,
+  DEFAULT_MEMORY_SETTINGS,
+  toMemoryRetrievalConfig,
+} from "@/lib/memory/settings";
 import { injectMemory, shouldInjectMemory } from "@/lib/memory/injection";
 import { injectSkills } from "@/lib/skills/injection";
+import { buildMemoryToolsForProvider } from "@/lib/skills/memoryBuiltins";
 import { skillRegistry } from "@/lib/skills/registry";
 import { FORMATS } from "../../translator/formats.ts";
 import { detectCachingContext } from "../../services/compression/cachingAware.ts";
 
 type MemorySkillsLogger = { debug?: (...args: unknown[]) => void } | null | undefined;
 
-export function getSkillsProviderForFormat(format: string): "openai" | "anthropic" | "google" | "other" {
+function getToolName(tool: unknown): string {
+  if (!tool || typeof tool !== "object") return "";
+  const r = tool as Record<string, unknown>;
+  if (typeof r.name === "string") return r.name;
+  if (r.function && typeof r.function === "object") {
+    const fn = r.function as Record<string, unknown>;
+    if (typeof fn.name === "string") return fn.name;
+  }
+  return "";
+}
+
+export function sortToolsByName<T>(tools: T[]): T[] {
+  if (!Array.isArray(tools) || tools.length <= 1) return tools;
+  return [...tools].sort((a, b) => getToolName(a).localeCompare(getToolName(b)));
+}
+
+export function getSkillsProviderForFormat(
+  format: string
+): "openai" | "anthropic" | "google" | "other" {
   switch (format) {
     case FORMATS.CLAUDE:
       return "anthropic";
@@ -100,7 +123,7 @@ export async function injectMemoryAndSkills({
           }
           return "";
         }
-        
+
         if (Array.isArray(body.messages)) {
           const r = pickFrom(body.messages);
           if (r) return r;
@@ -138,6 +161,42 @@ export async function injectMemoryAndSkills({
     }
   }
 
+  if (memoryOwnerId && memorySettings?.enabled && body.stream !== true) {
+    // Server-side builtin memory tools (memory_save/update/search/delete) are
+    // executed by the gateway's tool-call interception, which runs only on the
+    // non-stream path. Stream clients (opencode etc.) execute tools client-side,
+    // so for them these tools would be announced but never executed; they should
+    // use the MCP memory tools (omniroute_memory_*) instead.
+    const existingTools = Array.isArray(body.tools) ? body.tools : [];
+    const existingToolNames = new Set(
+      existingTools.flatMap((tool) => {
+        const record = tool as Record<string, unknown> | null;
+        if (!record || typeof record !== "object") return [];
+        const fn = record.function as Record<string, unknown> | undefined;
+        if (typeof fn?.name === "string") return [fn.name];
+        if (typeof record.name === "string") return [record.name];
+        return [];
+      })
+    );
+    const memoryTools = buildMemoryToolsForProvider(
+      getSkillsProviderForFormat(sourceFormat)
+    ).filter((tool) => {
+      const record = tool as Record<string, unknown>;
+      const name = (record.function as Record<string, unknown> | undefined)?.name ?? record.name;
+      return typeof name === "string" && !existingToolNames.has(name);
+    });
+    if (memoryTools.length > 0) {
+      body = {
+        ...body,
+        tools: [...existingTools, ...memoryTools],
+      };
+      log?.debug?.(
+        "MEMORY",
+        `Injected ${memoryTools.length} memory tool(s) for key=${memoryOwnerId}`
+      );
+    }
+  }
+
   if (memoryOwnerId && memorySettings?.skillsEnabled) {
     // Ensure the registry cache is warm before listing: on a cold/fresh
     // process skills that exist only in the DB would be missed (false
@@ -168,6 +227,13 @@ export async function injectMemoryAndSkills({
       };
       log?.debug?.("SKILLS", `Injected ${mergedTools.length - existingTools.length} skills`);
     }
+  }
+
+  if (Array.isArray(body.tools) && body.tools.length > 1) {
+    body = {
+      ...body,
+      tools: sortToolsByName(body.tools),
+    };
   }
 
   return { body, memorySettings };
