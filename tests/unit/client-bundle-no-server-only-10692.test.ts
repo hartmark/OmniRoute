@@ -37,6 +37,13 @@ const SERVER_ONLY = new Set([
   "src/lib/db/migrationRunner.ts",
   "open-sse/utils/proxyFetch.ts",
   "open-sse/utils/tlsClient.ts",
+  // fs/os/path resolver behind CURSOR_AGENT_CLI_VERSION; the pin string alone
+  // lives in the import-free cursorAgentCliVersionPin.ts (single source of
+  // truth) precisely so client-reachable code can depend on the value
+  // without dragging this file in. Turbopack panic reproduced live via
+  // `open-sse/config/providerModels.ts` -> ... -> `src/lib/oauth/constants/oauth.ts`
+  // -> here, reached from /dashboard/logs.
+  "open-sse/utils/cursorAgentCliVersion.ts",
 ]);
 
 /**
