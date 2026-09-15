@@ -272,6 +272,17 @@ export async function cleanupMemoryEntries(): Promise<CleanupResult> {
     const runResult = stmt.run(cutoffISO);
     result.deleted = runResult.changes;
 
+    // Compact FTS5 segments to reclaim space from tombstoned rows left
+    // by the DELETE trigger (memory_fts_ad). Without this, orphaned FTS
+    // data/docsize rows grow without bound after retention deletes.
+    if (result.deleted > 0) {
+      try {
+        db.prepare("INSERT INTO memory_fts(memory_fts) VALUES('optimize')").run();
+      } catch {
+        // Best-effort; FTS compaction failure is non-fatal.
+      }
+    }
+
     console.log(
       `[Cleanup] Deleted ${result.deleted} memory_entries older than ${retentionDays} days`
     );
@@ -431,6 +442,68 @@ export async function cleanupCcrBlocks(): Promise<CleanupResult> {
   return result;
 }
 
+const BATCH_RETENTION_DAYS_DEFAULT = 30; // matches OpenAI's own Batch API output retention window
+
+function getBatchRetentionDays(): number {
+  const raw = process.env.OMNIROUTE_BATCH_RETENTION_DAYS;
+  if (!raw) return BATCH_RETENTION_DAYS_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : BATCH_RETENTION_DAYS_DEFAULT;
+}
+
+/**
+ * Clean up terminal batches (completed/failed/cancelled/expired) older than the
+ * retention window, along with their per-line checkpoints and referenced files.
+ *
+ * batch_item_checkpoints had no cleanup path at all before this: the only
+ * existing sweep (deleteCompletedBatches(), the operator-triggered DELETE
+ * /api/v1/batches/delete-completed route) is scoped to `status = 'completed'`
+ * with no age filter, and is left untouched here -- it's a public API
+ * contract, not the automatic cleanup path. Observed live: 182K checkpoint
+ * rows / 5.25 GB, with no batch ever explicitly deleted by an operator.
+ */
+export async function cleanupOldBatches(): Promise<CleanupResult> {
+  const result: CleanupResult = { deleted: 0, errors: 0 };
+
+  try {
+    const { deleteTerminalBatchesOlderThan } = await import("./batches");
+    const retentionDays = getBatchRetentionDays();
+    const { deletedBatches } = deleteTerminalBatchesOlderThan(retentionDays);
+    result.deleted = deletedBatches;
+    console.log(
+      `[Cleanup] Deleted ${result.deleted} terminal batches older than ${retentionDays} days`
+    );
+  } catch (err: unknown) {
+    console.error("[Cleanup] Error cleaning old batches:", err);
+    result.errors++;
+  }
+
+  return result;
+}
+
+/**
+ * Clear the content of files past their own `expires_at`.
+ *
+ * Like ccr_blocks, a file carries its own expiry -- this needs no separate
+ * retention-days setting, just an operator-scheduled sweep, since nothing
+ * previously enforced expires_at at all. Observed live: 1,874 rows / 5.19 GB
+ * of uploaded file content, most long past expiry.
+ */
+export async function cleanupExpiredFiles(): Promise<CleanupResult> {
+  const result: CleanupResult = { deleted: 0, errors: 0 };
+
+  try {
+    const { pruneExpiredFiles } = await import("./files");
+    result.deleted = pruneExpiredFiles(Math.floor(Date.now() / 1000));
+    console.log(`[Cleanup] Deleted ${result.deleted} expired files`);
+  } catch (err: unknown) {
+    console.error("[Cleanup] Error cleaning expired files:", err);
+    result.errors++;
+  }
+
+  return result;
+}
+
 /**
  * Clean up conversation_turn_nodes older than the call-log retention window (#12453).
  *
@@ -563,6 +636,8 @@ export async function runAutoCleanup(): Promise<{
     ccrBlocks: await cleanupCcrBlocks(),
     conversationTurnNodes: await cleanupConversationTurnNodes(),
     agenticConversations: await cleanupAgenticConversations(),
+    oldBatches: await cleanupOldBatches(),
+    expiredFiles: await cleanupExpiredFiles(),
   };
 
   const totalDeleted = Object.values(results).reduce((sum, r) => sum + r.deleted, 0);
@@ -941,13 +1016,68 @@ export async function vacuumAfterCleanup(
   }
 }
 
+const DEFAULT_VACUUM_MIN_RECLAIMABLE_BYTES = 100 * 1024 * 1024; // 100 MB
+
+export function getVacuumMinReclaimableBytes(): number {
+  const raw = process.env.OMNIROUTE_VACUUM_MIN_RECLAIMABLE_MB;
+  if (!raw) return DEFAULT_VACUUM_MIN_RECLAIMABLE_BYTES;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed >= 0
+    ? parsed * 1024 * 1024
+    : DEFAULT_VACUUM_MIN_RECLAIMABLE_BYTES;
+}
+
+/**
+ * `db.exec("VACUUM")` is synchronous and blocks the entire process -- on a
+ * multi-GB database that can freeze all HTTP traffic for 15-20 minutes, even
+ * when the cleanup that triggered it only freed a handful of rows. Reclaimable
+ * space (SQLite's own free-page count, not row count) is what actually
+ * determines whether that multi-minute freeze is worth it: a few oversized
+ * batch_item_checkpoints rows can free more than thousands of tiny audit-log
+ * rows. Observed live: a routine cleanup that freed 2-6 rows re-triggered a
+ * full VACUUM on every restart regardless.
+ */
+export function getReclaimableBytes(db: ReturnType<typeof getDbInstance>): number {
+  const freelist = db.pragma("freelist_count", { simple: true }) as number;
+  const pageSize = db.pragma("page_size", { simple: true }) as number;
+  return freelist * pageSize;
+}
+
+export function vacuumIfWorthwhile(db: ReturnType<typeof getDbInstance>, logPrefix: string): void {
+  let reclaimable = 0;
+  try {
+    reclaimable = getReclaimableBytes(db);
+  } catch (err) {
+    console.error(`${logPrefix} Failed to read reclaimable space:`, err);
+    return;
+  }
+  const minBytes = getVacuumMinReclaimableBytes();
+  if (reclaimable < minBytes) {
+    console.log(
+      `${logPrefix} Skipping VACUUM: only ${(reclaimable / (1024 * 1024)).toFixed(1)} MB reclaimable (threshold ${(minBytes / (1024 * 1024)).toFixed(0)} MB).`
+    );
+    return;
+  }
+  console.log(
+    `${logPrefix} Running VACUUM (${(reclaimable / (1024 * 1024)).toFixed(1)} MB reclaimable)...`
+  );
+  try {
+    db.exec("VACUUM");
+    console.log(`${logPrefix} VACUUM completed.`);
+  } catch (vacErr) {
+    console.error(`${logPrefix} VACUUM failed:`, vacErr);
+  }
+}
+
 /**
  * Start the background cleanup scheduler. Runs cleanup on startup
- * and then every 6 hours. Runs VACUUM after deletes to reclaim disk space.
+ * and then every 6 hours. VACUUMs after deletes to reclaim disk space, but
+ * only when there is meaningfully more than OMNIROUTE_VACUUM_MIN_RECLAIMABLE_MB
+ * (default 100 MB) worth of free pages to reclaim -- see vacuumIfWorthwhile().
  *
- * Without this, tables grow unboundedly (compression_analytics 600K+ rows,
- * usage_history 250K+ rows) causing 1.4GB+ SQLite files and 3-8GB RSS
- * from better-sqlite3 memory mapping.
+ * Without the cleanup itself, tables grow unboundedly (compression_analytics
+ * 600K+ rows, usage_history 250K+ rows) causing 1.4GB+ SQLite files and
+ * 3-8GB RSS from better-sqlite3 memory mapping.
  */
 export function startCleanupScheduler(): void {
   if (_cleanupSchedulerTimer) return;
@@ -960,7 +1090,9 @@ export function startCleanupScheduler(): void {
       const totalDeleted = result.totalDeleted + proxyResult.deleted;
       if (totalDeleted > 0) {
         console.log(`[Cleanup] Startup cleanup freed ${totalDeleted} rows.`);
-        await vacuumAfterCleanup(totalDeleted, (sql) => getDbInstance().exec(sql));
+        if (shouldVacuumAfterCleanup(totalDeleted)) {
+          vacuumIfWorthwhile(getDbInstance(), "[Cleanup]");
+        }
       }
     } catch (err) {
       console.error("[Cleanup] Startup cleanup failed:", err);
@@ -975,7 +1107,9 @@ export function startCleanupScheduler(): void {
       const totalDeleted = result.totalDeleted + proxyResult.deleted;
       if (totalDeleted > 0) {
         console.log(`[Cleanup] Periodic cleanup freed ${totalDeleted} rows.`);
-        await vacuumAfterCleanup(totalDeleted, (sql) => getDbInstance().exec(sql));
+        if (shouldVacuumAfterCleanup(totalDeleted)) {
+          vacuumIfWorthwhile(getDbInstance(), "[Cleanup]");
+        }
       }
     } catch (err) {
       console.error("[Cleanup] Periodic cleanup failed:", err);
